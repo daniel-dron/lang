@@ -197,8 +197,6 @@ impl TypeChecker {
                 let ret_ty = self.infer_expression(&mut function_declaration_stmt.body)?;
 
                 if ret_ty != expected_ty {
-                    println!("STMT: {:#?}", statment);
-                    println!("Ret: {:#?}. Exp: {:#?}", ret_ty, expected_ty);
                     return Err(TypeError {
                         span: statment.span.clone(),
                         ty: TypeErrorKind::TODO("Function Declaration Err 2".into()),
@@ -368,7 +366,37 @@ impl TypeChecker {
                     }
                 }
             },
-            ExprKind::Closure(closure_expr) => todo!(),
+            ExprKind::Closure(closure_expr) => {
+                // parse the body
+                let ret_ty = self.infer_expression(&mut closure_expr.body)?;
+
+                if let Some(ty) = &closure_expr.return_type {
+                    let expected_ty = Type::from(ty)?;
+
+                    if ret_ty != expected_ty {
+                        return Err(TypeError {
+                            span: expression.span.clone(),
+                            ty: TypeErrorKind::TODO("Closure Err 1".into()),
+                        });
+                    }
+                }
+
+                let parameters = closure_expr
+                    .parameters
+                    .iter()
+                    .map(|param| Type::from(&param.type_annotation))
+                    .collect::<Result<Vec<Type>, TypeError>>()?;
+
+                // register param types first
+                for (param, ty) in closure_expr.parameters.iter().zip(&parameters) {
+                    self.variable_types.insert(param.name.clone(), ty.clone());
+                }
+
+                Ok(Type::Function(FunctionType {
+                    parameters,
+                    ret_ty: Box::new(ret_ty),
+                }))
+            }
         }
     }
 }
