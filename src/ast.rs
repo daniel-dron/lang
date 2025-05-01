@@ -37,7 +37,7 @@ impl Span {
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypeAnnotation {
     Named(String, Span),
-    // Function(Vec<TypeAnnotation>, Box<TypeAnnotation>), // fn(i32, bool) -> String
+    Function(Vec<TypeAnnotation>, Box<TypeAnnotation>), // fn(i32, bool) -> String
     Never, // ! (never type)
 }
 

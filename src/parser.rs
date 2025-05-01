@@ -626,6 +626,38 @@ impl<'a> NewParser<'a> {
         ))
     }
 
+    fn parse_type(&mut self) -> Result<TypeAnnotation, NewParserError> {
+        let ty_start = self.current;
+        if self.check(TokenType::Function) {
+            self.advance(); // fn
+            self.expect(TokenType::LeftParen)?;
+
+            let mut types: Vec<TypeAnnotation> = vec![];
+
+            if !self.check(TokenType::RightParen) {
+                types.push(self.parse_type()?);
+
+                while self.check(TokenType::Comma) {
+                    self.advance(); // ,
+                    types.push(self.parse_type()?);
+                }
+            }
+            self.advance(); // right paren
+
+            self.expect(TokenType::ArrowRight)?;
+
+            let ret_type = self.parse_type()?;
+
+            Ok(TypeAnnotation::Function(types, Box::new(ret_type)))
+        } else {
+            let ty = self.expect(TokenType::Identifier)?;
+            Ok(TypeAnnotation::Named(
+                ty.lexeme.clone(),
+                self.span_from(ty_start),
+            ))
+        }
+    }
+
     fn function_declaration(&mut self) -> Result<Stmt, NewParserError> {
         let start = self.current;
         self.expect(TokenType::Function)?;
@@ -638,13 +670,7 @@ impl<'a> NewParser<'a> {
         // return type annotation
         let ty = if self.check(TokenType::ArrowRight) {
             self.advance();
-
-            let ty_start = self.current;
-            let ty = self.expect(TokenType::Identifier)?;
-            Some(TypeAnnotation::Named(
-                ty.lexeme.clone(),
-                self.span_from(ty_start),
-            ))
+            Some(self.parse_type()?)
         } else {
             Some(TypeAnnotation::Never)
         };

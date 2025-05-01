@@ -87,11 +87,11 @@ impl TypeChecker {
                 // and if the initializer type matches with it
                 if let Some(ty_annotation) = &let_stmt.ty {
                     let ty_annotation = match Type::from(ty_annotation) {
-                        Some(ty) => ty,
-                        None => {
+                        Ok(ty) => ty,
+                        Err(e) => {
                             return Err(TypeError {
                                 span: statment.span.clone(),
-                                ty: TypeErrorKind::TODO("Let Type error".into()),
+                                ty: TypeErrorKind::TODO(format!("Let Type error ({:?})", e)),
                             });
                         }
                     };
@@ -167,51 +167,43 @@ impl TypeChecker {
                 let parameters = function_declaration_stmt
                     .parameters
                     .iter()
-                    .map(|param| match &param.type_annotation {
-                        TypeAnnotation::Named(ty, _) => match ty.as_str() {
-                            "str" => Type::String,
-                            "bool" => Type::Boolean,
-                            "f64" => Type::Float64,
-                            _ => todo!(),
-                        },
-                        TypeAnnotation::Never => todo!(),
-                    })
-                    .collect::<Vec<Type>>();
+                    .map(|param| Type::from(&param.type_annotation))
+                    .collect::<Result<Vec<Type>, TypeError>>()?;
 
                 // register param types first
                 for (param, ty) in function_declaration_stmt.parameters.iter().zip(&parameters) {
                     self.variable_types.insert(param.name.clone(), ty.clone());
                 }
 
-                let ret_ty = self.infer_expression(&mut function_declaration_stmt.body)?;
-
                 let expected_ty = if let Some(ty) = &function_declaration_stmt.return_ty {
-                    if let Some(ty) = Type::from(ty) {
-                        ty
-                    } else {
-                        return Err(TypeError {
-                            span: statment.span.clone(),
-                            ty: TypeErrorKind::TODO("Function Declaration Err 1".into()),
-                        });
-                    }
+                    Type::from(ty).map_err(|err| TypeError {
+                        span: statment.span.clone(),
+                        ty: TypeErrorKind::TODO(format!("Function Declaration Err 1 ({:#?})", err)),
+                    })?
                 } else {
                     Type::Never
                 };
 
+                // must register the function type first. must be available for recursion
+                self.function_types.insert(
+                    function_declaration_stmt.name.clone(),
+                    FunctionType {
+                        parameters,
+                        ret_ty: Box::new(expected_ty.clone()),
+                    },
+                );
+
+                // parse the body
+                let ret_ty = self.infer_expression(&mut function_declaration_stmt.body)?;
+
                 if ret_ty != expected_ty {
+                    println!("STMT: {:#?}", statment);
+                    println!("Ret: {:#?}. Exp: {:#?}", ret_ty, expected_ty);
                     return Err(TypeError {
                         span: statment.span.clone(),
                         ty: TypeErrorKind::TODO("Function Declaration Err 2".into()),
                     });
                 }
-
-                self.function_types.insert(
-                    function_declaration_stmt.name.clone(),
-                    FunctionType {
-                        parameters,
-                        ret_ty: Box::new(expected_ty),
-                    },
-                );
 
                 Ok(None)
             }
@@ -347,6 +339,13 @@ impl TypeChecker {
                     ty: TypeErrorKind::TODO("Invalid Call Err".into()),
                 }),
                 Type::Function(function_type) => {
+                    // LITTLE HACK FOR NOW since we dont support variadic parameter count
+                    if let ExprKind::Identifier(name) = &call_expr.callee.kind {
+                        if name == "print" {
+                            return Ok(*function_type.ret_ty.clone());
+                        }
+                    }
+
                     // check parameter types
                     if function_type.parameters.len() != call_expr.arguments.len() {
                         Err(TypeError {
