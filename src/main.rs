@@ -152,8 +152,10 @@ fn main() {
                         Err(err) => println!("Error {:?}", err),
                     }
                 }
-                Err(error) => {
-                    report(file_path, error, &source, &tokens);
+                Err(errors) => {
+                    for error in errors {
+                        report(file_path, error, &source, &tokens);
+                    }
                 }
             }
         }

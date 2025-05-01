@@ -8,19 +8,19 @@ use crate::{
     types::{FunctionType, Type},
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TypeError {
     pub span: Span,
     pub ty: TypeErrorKind,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expected {
     Span(Span),
     Named(String),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum TypeErrorKind {
     MissmatchedTypes {
         expected: Expected,
@@ -41,6 +41,8 @@ pub struct TypeChecker {
 
     // For functions
     function_types: HashMap<String, FunctionType>,
+
+    errors: Vec<TypeError>,
 }
 
 impl TypeChecker {
@@ -49,6 +51,7 @@ impl TypeChecker {
             expr_types: HashMap::new(),
             variable_types: HashMap::new(),
             function_types: HashMap::new(),
+            errors: vec![],
         }
     }
 
@@ -56,15 +59,23 @@ impl TypeChecker {
         self.function_types.insert(name, ty);
     }
 
-    pub fn infer(&mut self, mut ast: Vec<Stmt>) -> Result<Vec<Stmt>, TypeError> {
+    pub fn infer(&mut self, mut ast: Vec<Stmt>) -> Result<Vec<Stmt>, Vec<TypeError>> {
         // recursively look through statements and expressions and infer type and propagate it up
         // similar to compiler architecture. its depth first
 
         for stmt in &mut ast {
-            self.infer_statement(stmt)?;
+            if let Err(err) = self.infer_statement(stmt) {
+                self.errors.push(err);
+            } else {
+                continue;
+            }
         }
 
-        Ok(ast)
+        if self.errors.is_empty() {
+            Ok(ast)
+        } else {
+            Err(self.errors.clone())
+        }
     }
 
     fn infer_statement(&mut self, statment: &mut Stmt) -> Result<Option<Type>, TypeError> {
@@ -307,8 +318,13 @@ impl TypeChecker {
                 let mut ret_types = vec![];
 
                 for stmt in &mut block_expr.statements {
-                    if let Some(ty) = self.infer_statement(stmt)? {
-                        ret_types.push(ty);
+                    match self.infer_statement(stmt) {
+                        Ok(ty) => {
+                            if let Some(ty) = ty {
+                                ret_types.push(ty);
+                            }
+                        }
+                        Err(err) => self.errors.push(err),
                     }
                 }
 
@@ -354,11 +370,18 @@ impl TypeChecker {
                         for (expr, ty) in
                             call_expr.arguments.iter_mut().zip(function_type.parameters)
                         {
-                            if self.infer_expression(expr)? != ty {
-                                return Err(TypeError {
-                                    span: expression.span.clone(),
-                                    ty: TypeErrorKind::TODO("Function Call Type Err 2".into()),
-                                });
+                            match self.infer_expression(expr) {
+                                Ok(expr_ty) => {
+                                    if expr_ty != ty {
+                                        return Err(TypeError {
+                                            span: expression.span.clone(),
+                                            ty: TypeErrorKind::TODO(
+                                                "Function Call Type Err 2".into(),
+                                            ),
+                                        });
+                                    }
+                                }
+                                Err(err) => self.errors.push(err),
                             }
                         }
 
