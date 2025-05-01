@@ -95,8 +95,6 @@ impl Lexer {
     }
 
     fn string(&mut self, scanner: &mut Scanner) {
-        let (line, column) = scanner.get_line_diagnostics();
-
         while let Some(c) = scanner.peek() {
             if c == '"' {
                 break;
@@ -104,6 +102,8 @@ impl Lexer {
 
             scanner.advance();
         }
+        
+        let (line, column) = scanner.get_line_diagnostics();
 
         if scanner.is_at_end() {
             panic!(
