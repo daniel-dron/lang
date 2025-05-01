@@ -26,7 +26,7 @@ fn get_error_title(kind: &TypeErrorKind) -> String {
             got_ty: _,
             got_span: _,
         } => "mismatched types".into(),
-        TypeErrorKind::TODO => todo!(),
+        TypeErrorKind::TODO(text) => text.clone(),
     }
 }
 
@@ -37,7 +37,7 @@ fn get_error_id(kind: &TypeErrorKind) -> u64 {
             got_ty: _,
             got_span: _,
         } => 100,
-        TypeErrorKind::TODO => todo!(),
+        TypeErrorKind::TODO(_) => 0,
     }
 }
 
@@ -165,6 +165,6 @@ pub fn report(file: &str, error: TypeError, source: &str, tokens: &[Token]) {
                 }
             };
         }
-        TypeErrorKind::TODO => todo!(),
+        TypeErrorKind::TODO(text) => println!("{}", text),
     };
 }

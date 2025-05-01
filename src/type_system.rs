@@ -27,7 +27,7 @@ pub enum TypeErrorKind {
         got_ty: Type,
         got_span: Span,
     },
-    TODO,
+    TODO(String),
 }
 
 /// The type checker not only enforces type correctness but also infers types
@@ -91,7 +91,7 @@ impl TypeChecker {
                         None => {
                             return Err(TypeError {
                                 span: statment.span.clone(),
-                                ty: TypeErrorKind::TODO,
+                                ty: TypeErrorKind::TODO("Let Type error".into()),
                             });
                         }
                     };
@@ -120,7 +120,7 @@ impl TypeChecker {
                     Some(ty) => Ok(ty.clone()),
                     None => Err(TypeError {
                         span: statment.span.clone(),
-                        ty: TypeErrorKind::TODO,
+                        ty: TypeErrorKind::TODO("Statement Type Error".into()),
                     }),
                 }?;
 
@@ -149,7 +149,7 @@ impl TypeChecker {
                     if then_ty != else_ty {
                         return Err(TypeError {
                             span: statment.span.clone(),
-                            ty: TypeErrorKind::TODO,
+                            ty: TypeErrorKind::TODO("If Statement Error".into()),
                         });
                     }
                 }
@@ -191,7 +191,7 @@ impl TypeChecker {
                     } else {
                         return Err(TypeError {
                             span: statment.span.clone(),
-                            ty: TypeErrorKind::TODO,
+                            ty: TypeErrorKind::TODO("Function Declaration Err 1".into()),
                         });
                     }
                 } else {
@@ -201,7 +201,7 @@ impl TypeChecker {
                 if ret_ty != expected_ty {
                     return Err(TypeError {
                         span: statment.span.clone(),
-                        ty: TypeErrorKind::TODO,
+                        ty: TypeErrorKind::TODO("Function Declaration Err 2".into()),
                     });
                 }
 
@@ -235,7 +235,7 @@ impl TypeChecker {
                 }
                 Err(TypeError {
                     span: expression.span.clone(),
-                    ty: TypeErrorKind::TODO,
+                    ty: TypeErrorKind::TODO("Identifier Type Error".into()),
                 })
             }
             ExprKind::Binary(binary_expr) => {
@@ -257,7 +257,7 @@ impl TypeChecker {
                         } else {
                             return Err(TypeError {
                                 span: expression.span.clone(),
-                                ty: TypeErrorKind::TODO,
+                                ty: TypeErrorKind::TODO("Binary Type Err 1".into()),
                             });
                         }
                     }
@@ -267,7 +267,7 @@ impl TypeChecker {
                         } else {
                             Err(TypeError {
                                 span: expression.span.clone(),
-                                ty: TypeErrorKind::TODO,
+                                ty: TypeErrorKind::TODO("Binary Type Err 2".into()),
                             })
                         }
                     }
@@ -280,7 +280,7 @@ impl TypeChecker {
                         } else {
                             Err(TypeError {
                                 span: expression.span.clone(),
-                                ty: TypeErrorKind::TODO,
+                                ty: TypeErrorKind::TODO("Binary Type Err 3".into()),
                             })
                         }
                     }
@@ -290,7 +290,7 @@ impl TypeChecker {
                         } else {
                             Err(TypeError {
                                 span: expression.span.clone(),
-                                ty: TypeErrorKind::TODO,
+                                ty: TypeErrorKind::TODO("Binary Type Err 4".into()),
                             })
                         }
                     }
@@ -307,7 +307,7 @@ impl TypeChecker {
                         } else {
                             Err(TypeError {
                                 span: expression.span.clone(),
-                                ty: TypeErrorKind::TODO,
+                                ty: TypeErrorKind::TODO("Unary Type Err".into()),
                             })
                         }
                     }
@@ -335,7 +335,7 @@ impl TypeChecker {
                 if !all_equal {
                     return Err(TypeError {
                         span: expression.span.clone(),
-                        ty: TypeErrorKind::TODO,
+                        ty: TypeErrorKind::TODO("Block Type Err".into()),
                     });
                 }
 
@@ -344,14 +344,14 @@ impl TypeChecker {
             ExprKind::Call(call_expr) => match self.infer_expression(&mut call_expr.callee)? {
                 Type::Float64 | Type::Boolean | Type::String | Type::Never => Err(TypeError {
                     span: expression.span.clone(),
-                    ty: TypeErrorKind::TODO,
+                    ty: TypeErrorKind::TODO("Invalid Call Err".into()),
                 }),
                 Type::Function(function_type) => {
                     // check parameter types
                     if function_type.parameters.len() != call_expr.arguments.len() {
                         Err(TypeError {
                             span: expression.span.clone(),
-                            ty: TypeErrorKind::TODO,
+                            ty: TypeErrorKind::TODO("Function Call Type Err 1".into()),
                         })
                     } else {
                         for (expr, ty) in
@@ -360,7 +360,7 @@ impl TypeChecker {
                             if self.infer_expression(expr)? != ty {
                                 return Err(TypeError {
                                     span: expression.span.clone(),
-                                    ty: TypeErrorKind::TODO,
+                                    ty: TypeErrorKind::TODO("Function Call Type Err 2".into()),
                                 });
                             }
                         }
