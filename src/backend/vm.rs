@@ -2,13 +2,8 @@ use core::panic;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use lang_core::value;
-
-use crate::compiler::{
-    self, BinaryOpArgs, CallId, CompilationUnit, FunctionId, Instruction, NativeFn,
-    NativeFunctionRegistry,
-};
-use crate::value::{Closure, RegisterId, Upvalue, UpvalueTarget, Value};
+use crate::backend::compiler::*;
+use crate::common::value::*;
 
 #[derive(Debug)]
 pub struct ExecutionContext {
@@ -90,26 +85,26 @@ impl VirtualMachine {
         let mut frame = &mut context.call_stack[context.current_frame];
 
         match &instruction.op {
-            compiler::OpCode::LoadConstant { dest, constant } => {
+            OpCode::LoadConstant { dest, constant } => {
                 frame.registers[dest.0] = context.unit.constants[constant.0].clone();
             }
-            compiler::OpCode::Add(args) => {
+            OpCode::Add(args) => {
                 Self::apply_binary_op(&mut frame.registers, &args, |left, right| left + right);
             }
-            compiler::OpCode::Move { dest, src } => {
+            OpCode::Move { dest, src } => {
                 frame.registers[dest.0] = frame.registers[src.0].clone();
             }
-            compiler::OpCode::Return { from } => {
+            OpCode::Return { from } => {
                 return Ok(ExecuteStatus::Return(if let Some(from) = from {
                     frame.registers[from.0].clone()
                 } else {
                     Value::Number(0.0)
                 }));
             }
-            compiler::OpCode::Call { id, params, ret } => {
+            OpCode::Call { id, params, ret } => {
                 let index = match id {
-                    compiler::CallId::Index(index) => *index,
-                    compiler::CallId::Register(register_id) => {
+                    CallId::Index(index) => *index,
+                    CallId::Register(register_id) => {
                         if let Value::Function(index) = frame.registers[register_id.0] {
                             index
                         } else if let Value::Closure(closure) = &frame.registers[register_id.0] {
@@ -152,61 +147,61 @@ impl VirtualMachine {
 
                 return Ok(ExecuteStatus::Call(index, args, *ret));
             }
-            compiler::OpCode::CallNative { id, ret, params } => {
+            OpCode::CallNative { id, ret, params } => {
                 return Ok(ExecuteStatus::CallNative(
                     id.clone(),
                     params.clone(),
                     ret.clone(),
                 ));
             }
-            compiler::OpCode::LoadGlobal { dest, src } => {
+            OpCode::LoadGlobal { dest, src } => {
                 if let Some(value) = context.unit.globals.get(src) {
                     frame.registers[dest.0] = value.clone();
                 } else {
                     panic!("No global!");
                 }
             }
-            compiler::OpCode::StoreGlobal { dest, src } => {
+            OpCode::StoreGlobal { dest, src } => {
                 context
                     .unit
                     .globals
                     .insert(dest.clone(), frame.registers[src.0].clone());
             }
-            compiler::OpCode::Sub(args) => {
+            OpCode::Sub(args) => {
                 Self::apply_binary_op(&mut frame.registers, &args, |left, right| left - right);
             }
-            compiler::OpCode::Mul(args) => {
+            OpCode::Mul(args) => {
                 Self::apply_binary_op(&mut frame.registers, &args, |left, right| left * right);
             }
-            compiler::OpCode::Div(args) => {
+            OpCode::Div(args) => {
                 Self::apply_binary_op(&mut frame.registers, &args, |left, right| left / right);
             }
-            compiler::OpCode::Equal(args) => {
+            OpCode::Equal(args) => {
                 Self::apply_binary_op(&mut frame.registers, &args, |left, right| {
                     Ok(Value::Boolean(left == right))
                 });
             }
-            compiler::OpCode::Greater(args) => {
+            OpCode::Greater(args) => {
                 Self::apply_binary_op(&mut frame.registers, &args, |left, right| {
                     Ok(Value::Boolean(left > right))
                 });
             }
-            compiler::OpCode::Lesser(args) => {
+            OpCode::Lesser(args) => {
                 Self::apply_binary_op(&mut frame.registers, &args, |left, right| {
                     Ok(Value::Boolean(left < right))
                 });
             }
-            compiler::OpCode::GreaterOrEqual(args) => {
+            OpCode::GreaterOrEqual(args) => {
                 Self::apply_binary_op(&mut frame.registers, &args, |left, right| {
                     Ok(Value::Boolean(left >= right))
                 });
             }
-            compiler::OpCode::LesserOrEqual(args) => {
+            OpCode::LesserOrEqual(args) => {
                 Self::apply_binary_op(&mut frame.registers, &args, |left, right| {
                     Ok(Value::Boolean(left <= right))
                 });
             }
-            compiler::OpCode::And(args) => {
+            OpCode::And(args) => {
                 Self::apply_binary_op(&mut frame.registers, &args, |left, right| {
                     if let (Value::Boolean(left), Value::Boolean(right)) = (left, right) {
                         return Ok(Value::Boolean(left && right));
@@ -215,7 +210,7 @@ impl VirtualMachine {
                     return Err("Can't apply binary And operation to non boolean values.".into());
                 });
             }
-            compiler::OpCode::Or(args) => {
+            OpCode::Or(args) => {
                 Self::apply_binary_op(&mut frame.registers, &args, |left, right| {
                     if let (Value::Boolean(left), Value::Boolean(right)) = (left, right) {
                         return Ok(Value::Boolean(left || right));
@@ -224,25 +219,25 @@ impl VirtualMachine {
                     return Err("Can't apply binary Or operation to non boolean values.".into());
                 });
             }
-            compiler::OpCode::Negate(unary_op_args) => {
+            OpCode::Negate(unary_op_args) => {
                 frame.registers[unary_op_args.dest.0] =
                     (-frame.registers[unary_op_args.right.0].clone())?;
             }
-            compiler::OpCode::Not(unary_op_args) => {
+            OpCode::Not(unary_op_args) => {
                 frame.registers[unary_op_args.dest.0] =
                     (!frame.registers[unary_op_args.right.0].clone())?;
             }
-            compiler::OpCode::JumpIfFalse { cond, offset } => {
+            OpCode::JumpIfFalse { cond, offset } => {
                 if let Value::Boolean(val) = frame.registers[cond.0] {
                     if !val {
                         frame.ip += *offset as usize - 1;
                     }
                 }
             }
-            compiler::OpCode::Jump { offset } => {
+            OpCode::Jump { offset } => {
                 frame.ip += *offset as usize - 1;
             }
-            compiler::OpCode::CreateClosure { dest, function_id } => {
+            OpCode::CreateClosure { dest, function_id } => {
                 let prototype = &context.unit.functions[*function_id];
                 let closure = Rc::new(Closure {
                     function_id: *function_id,
@@ -256,7 +251,7 @@ impl VirtualMachine {
                 let frame = &mut context.call_stack[context.current_frame];
                 frame.registers[dest.0] = Value::Closure(closure);
             }
-            compiler::OpCode::GetUpvalue { dest, idx } => {
+            OpCode::GetUpvalue { dest, idx } => {
                 let upvalue = &frame.upvalues[*idx].clone();
                 match upvalue {
                     Upvalue::Open(upvalue_target) => {
@@ -270,7 +265,7 @@ impl VirtualMachine {
                     }
                 }
             }
-            compiler::OpCode::SetUpvalue { src, idx } => {
+            OpCode::SetUpvalue { src, idx } => {
                 let upvalue = &frame.upvalues[*idx]; // Don't clone it
                 match upvalue {
                     Upvalue::Open(upvalue_target) => {

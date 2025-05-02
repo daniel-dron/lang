@@ -1,8 +1,7 @@
-use crate::{ast::*, types::Type};
-use std::time::{Duration, Instant};
-
-use super::lexer::{Token, TokenType};
 use std::{fmt::Debug, vec};
+
+use crate::frontend::ast::*;
+use crate::frontend::lexer::*;
 
 #[derive(Debug)]
 pub struct NewParser<'a> {
@@ -807,19 +806,7 @@ impl<'a> NewParser<'a> {
     }
 
     pub fn generate_ast(&mut self) -> Result<Vec<Stmt>, Vec<NewParserError>> {
-        // Create a timestamp for the start time
-        let start = Instant::now();
-
         let statements = self.parse_program();
-        // Calculate the time elapsed since start
-        let elapsed = start.elapsed();
-
-        // Get the elapsed time in different units
-        let elapsed_ms = elapsed.as_millis();
-        let elapsed_secs = elapsed.as_secs_f64();
-
-        println!("Time elapsed: {} milliseconds", elapsed_ms);
-        println!("Time elapsed: {:.6} seconds", elapsed_secs);
 
         if self.errors.is_empty() {
             Ok(statements)

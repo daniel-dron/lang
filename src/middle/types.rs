@@ -1,9 +1,6 @@
-use std::collections::HashMap;
+use crate::frontend::ast::TypeAnnotation;
 
-use crate::{
-    ast::{ExprKind, StmtKind, TypeAnnotation},
-    type_system::TypeError,
-};
+use super::type_system::TypeError;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {

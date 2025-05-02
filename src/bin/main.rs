@@ -1,31 +1,14 @@
 use std::{
-    env,
-    fs::{self, File},
-    io::Read,
-    process,
+    env, fs, process,
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use compiler::CompilationUnit;
-use error_reporter::report;
-use lexer::Lexer;
-use parser::NewParser;
-use scanner::Scanner;
-use type_system::TypeChecker;
-use types::{FunctionType, Type};
-use value::Value;
-use vm::{ExecutionContext, VirtualMachine};
-
-mod ast;
-mod compiler;
-mod error_reporter;
-mod lexer;
-mod parser;
-mod scanner;
-mod type_system;
-mod types;
-mod value;
-mod vm;
+use lang_core::{
+    CompilationUnit, ExecutionContext, Lexer, NewParser, Scanner, TypeChecker, Value,
+    VirtualMachine,
+    error_reporter::report,
+    types::{FunctionType, Type},
+};
 
 fn print(context: &ExecutionContext, params: Vec<Value>) -> Result<Value, String> {
     print!("EXECUTION: ");

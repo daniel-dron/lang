@@ -1,10 +1,6 @@
 use colored::Colorize;
 
-use crate::{
-    ast::Span,
-    lexer::Token,
-    type_system::{Expected, TypeError, TypeErrorKind},
-};
+use crate::{frontend::{ast::Span, lexer::Token}, middle::type_system::{Expected, TypeError, TypeErrorKind}};
 
 fn get_earliest_and_latest_tokens(tokens: &[Token]) -> Option<(&Token, &Token)> {
     if tokens.is_empty() {

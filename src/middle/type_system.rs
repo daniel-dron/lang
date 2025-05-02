@@ -1,12 +1,10 @@
 use std::collections::HashMap;
 
-use crate::{
-    ast::{
-        BinaryOp, Expr, ExprKind, Literal, NodeId, Span, Stmt, StmtKind, TypeAnnotation, UnaryOp,
-    },
-    parser::ErrorType,
-    types::{FunctionType, Type},
+use crate::frontend::ast::{
+    BinaryOp, Expr, ExprKind, Literal, NodeId, Span, Stmt, StmtKind, TypeAnnotation, UnaryOp,
 };
+
+use super::types::{FunctionType, Type};
 
 #[derive(Debug, Clone)]
 pub struct TypeError {

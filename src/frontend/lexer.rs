@@ -1,4 +1,4 @@
-use crate::{ast::Span, scanner::Scanner};
+use super::{ast::Span, scanner::Scanner};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum TokenType {
@@ -102,7 +102,7 @@ impl Lexer {
 
             scanner.advance();
         }
-        
+
         let (line, column) = scanner.get_line_diagnostics();
 
         if scanner.is_at_end() {

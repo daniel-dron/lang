@@ -4,14 +4,9 @@ use std::{
     vec,
 };
 
-use crate::{
-    ast::{
-        BinaryOp, Expr, ExprKind, FunctionDeclarationStmt, Literal, NodeId, Span, Stmt, StmtKind,
-        UnaryOp,
-    },
-    value::{RegisterId, UpvalueTarget, Value},
-    vm::ExecutionContext,
-};
+use crate::backend::vm::ExecutionContext;
+use crate::common::value::*;
+use crate::frontend::ast::*;
 
 #[derive(Debug, Clone, Copy)]
 pub struct ConstantId(pub usize);
