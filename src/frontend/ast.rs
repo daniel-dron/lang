@@ -30,7 +30,7 @@ impl Span {
     }
 
     pub fn len(&self) -> usize {
-        self.end - self.start + 1 // inclusive
+        self.end - self.start // inclusive
     }
 }
 

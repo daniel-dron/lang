@@ -46,8 +46,8 @@ fn point_zone(tokens: &[Token]) -> Span {
     let latest = tokens.iter().max_by_key(|token| token.column).unwrap();
 
     return Span {
-        start: earliest.column - (earliest.lexeme.len() - 1),
-        end: latest.column,
+        start: earliest.column,
+        end: latest.column + latest.lexeme.len(),
     };
 }
 
@@ -115,16 +115,25 @@ pub fn report(file: &str, error: TypeError, source: &str, tokens: &[Token]) {
                         .join("");
 
                     // got zone
-                    let got_span = point_zone(got_tokens);
+                    let got_zone_span = point_zone(got_tokens);
                     let expected_span = point_zone(expected_tokens);
 
+                    // get the length of the wrong expression that fits in a single line
+                    let mut single_line_got_length: usize = 0;
+                    let line = got_tokens[0].line;
+                    for token in got_tokens {
+                        if token.line == line {
+                            single_line_got_length += token.span.len();
+                        }
+                    }
+
                     println!(
-                        "{} |{}{}{}{} {}",
+                        "{} | {}{}{}{} {}",
                         " ".repeat(line_num_width),
                         " ".repeat(expected_span.start),
                         "-".repeat(expected_span.len()).blue(), // underline the expected
-                        " ".repeat(got_span.start - expected_span.end - 1),
-                        "^".repeat(got_span.len()).red(),
+                        " ".repeat(got_zone_span.start - expected_span.end),
+                        "^".repeat(single_line_got_length).red(),
                         format!(
                             "expected `{}`, but found `{}`",
                             expected_text,
@@ -134,14 +143,14 @@ pub fn report(file: &str, error: TypeError, source: &str, tokens: &[Token]) {
                     );
 
                     println!(
-                        "{} |{}{}",
+                        "{} | {}{}",
                         " ".repeat(line_num_width),
                         " ".repeat(expected_span.start),
                         "|".blue()
                     );
 
                     println!(
-                        "{} |{}{}",
+                        "{} | {}{}",
                         " ".repeat(line_num_width),
                         " ".repeat(expected_span.start),
                         "expected due to this".blue()
@@ -152,7 +161,7 @@ pub fn report(file: &str, error: TypeError, source: &str, tokens: &[Token]) {
                     let got_span = point_zone(got_tokens);
 
                     println!(
-                        "{} |{}{} {}",
+                        "{} | {}{} {}",
                         " ".repeat(line_num_width),
                         " ".repeat(got_span.start),
                         "^".repeat(got_span.len()).red(),
