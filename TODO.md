@@ -1,5 +1,3 @@
-- [ ] Fix column tracking in lexer
-
 - [ ] Create a concept of unresolved symbols. Placeholder concepts for identifiers/calls to be resolved right before running.
     * right before running, the VM must have registered all the symbols
     * the prototype should have a list of opcodes that need resolving

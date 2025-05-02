@@ -62,6 +62,10 @@ pub struct Lexer {
     tokens: Vec<Token>,
 
     start: usize,
+
+    // track start of current token
+    start_line: usize,
+    start_column: usize,
 }
 
 impl Lexer {
@@ -70,6 +74,8 @@ impl Lexer {
         let mut lexer = Self {
             tokens: Vec::new(),
             start: 0,
+            start_line: 1,
+            start_column: 0,
         };
 
         lexer.generate_tokens(scanner);
@@ -84,12 +90,11 @@ impl Lexer {
     fn add_token(&mut self, ty: TokenType, scanner: &Scanner) {
         let lexeme = scanner.get_lexeme(self.start, scanner.current);
         let span = Span::new(self.start, scanner.current);
-        let (line, column) = scanner.get_line_diagnostics();
         self.tokens.push(Token {
             ty,
             lexeme,
-            line,
-            column,
+            line: self.start_line,
+            column: self.start_column,
             span,
         });
     }
@@ -103,12 +108,10 @@ impl Lexer {
             scanner.advance();
         }
 
-        let (line, column) = scanner.get_line_diagnostics();
-
         if scanner.is_at_end() {
             panic!(
                 "Unterminated string literal that started at line {}, column {}",
-                line, column
+                self.start_line, self.start_column
             );
         }
 
@@ -119,8 +122,8 @@ impl Lexer {
         self.tokens.push(Token {
             ty: TokenType::String,
             lexeme,
-            line,
-            column,
+            line: self.start_line,
+            column: self.start_column,
             span,
         });
     }
@@ -179,6 +182,10 @@ impl Lexer {
     fn generate_tokens(&mut self, mut scanner: Scanner) {
         while !scanner.is_at_end() {
             self.start = scanner.current;
+
+            let (line, column) = scanner.get_line_diagnostics();
+            self.start_line = line;
+            self.start_column = column;
 
             let c = match scanner.advance() {
                 Some(ch) => ch,
@@ -268,6 +275,10 @@ impl Lexer {
             }
         }
 
+        // EOF token should use the most up to date line diagnostics
+        let (line, column) = scanner.get_line_diagnostics();
+        self.start_line = line;
+        self.start_column = column;
         self.add_token(TokenType::EOF, &scanner);
     }
 }
