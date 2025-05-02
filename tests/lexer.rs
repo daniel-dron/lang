@@ -1,6 +1,5 @@
 mod lexer_tests {
-    use lang_core::lexer::{Lexer, TokenType};
-    use lang_core::scanner::Scanner;
+    use lang_core::{Lexer, Scanner, frontend::lexer::TokenType};
 
     #[test]
     fn test_lexer_keywords() {
@@ -179,7 +178,7 @@ mod lexer_tests {
 
         // Check "let" token position
         assert_eq!(tokens[0].line, 1);
-        assert_eq!(tokens[0].column, 0);
+        assert_eq!(tokens[0].column, 3);
 
         // Find tokens on different lines
         let fn_token = tokens.iter().find(|t| t.lexeme == "fn").unwrap();

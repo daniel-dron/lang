@@ -1,5 +1,5 @@
 mod scanner_tests {
-    use lang_core::scanner::Scanner;
+    use lang_core::Scanner;
 
     #[test]
     fn test_scanner_initialization() {
