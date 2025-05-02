@@ -65,15 +65,58 @@
         }
     ```
 
-- [ ] Array types (check lua implementation? or just a simple hashmap)
-- [ ] For loops. Range and iterator based.
-    ```
-    for i in 0..n {
-        // ...
-    }
+- [ ] variable shadowing
+    - [ ] same scope
+    - [ ] nested scopes
+- [ ] do not allow assigning a void return to a variable
+    ``` rust
+        fn foo() {
+            // nothing
+        }
 
-    let array = [1, 2, 3, 4, 5];
-    for i in array {
-        // ...
-    }
+        let test = foo(); // this should return an error
     ```
+- [ ] array types
+- [ ] for loops
+    - [ ] on ranges
+    - [ ] on iterables (str, arr)
+- [ ] match with simple patterns
+- [ ] optional
+- [ ] errors
+
+## Labels Issues:
+- bug: For errors and incorrect behavior
+- enhancement: For improvements to existing features
+- feature: For new functionality
+- documentation: For documentation improvements
+- refactor: For code cleanup without functionality changes
+- performance: For optimizations
+- help-wanted: To attract contributors
+- good-first-issue: For beginner-friendly tasks
+
+## Commits
+
+```
+<type>(<scope>): <short summary>
+
+<optional body>
+
+<optional footer>
+```
+
+### Tags
+- feat: New feature (e.g., feat(parser): Add support for lambda expressions)
+- fix: Bug fix (e.g., fix(lexer): Fix token position calculation)
+- refactor: Code changes that neither fix bugs nor add features
+- test: Adding or correcting tests
+- docs: Documentation changes
+- perf: Performance improvements
+- chore: Maintenance tasks, dependency updates, etc.
+
+### Scopes for Your Project
+
+Examples:
+- frontend, lexer, parser, ast
+- middle, type-system, typechecker
+- backend, compiler, vm
+- ci, build, project
