@@ -51,7 +51,7 @@ fn point_zone(tokens: &[Token]) -> Span {
     };
 }
 
-fn point_to(tokens: &[Token]) -> String {
+fn _point_to(tokens: &[Token]) -> String {
     let got_text = tokens
         .iter()
         .map(|token| token.lexeme.clone())

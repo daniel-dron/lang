@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::frontend::ast::{
-    BinaryOp, Expr, ExprKind, Literal, NodeId, Span, Stmt, StmtKind, TypeAnnotation, UnaryOp,
+    BinaryOp, Expr, ExprKind, Literal, Span, Stmt, StmtKind, TypeAnnotation, UnaryOp,
 };
 
 use super::types::{FunctionType, Type};
@@ -32,7 +32,7 @@ pub enum TypeErrorKind {
 #[derive(Debug)]
 pub struct TypeChecker {
     // For expressions (based on NodeId)
-    expr_types: HashMap<NodeId, Type>,
+    // expr_types: HashMap<NodeId, Type>,
 
     // For variables in each scope
     variable_types: HashMap<String, Type>,
@@ -46,7 +46,7 @@ pub struct TypeChecker {
 impl TypeChecker {
     pub fn new() -> Self {
         Self {
-            expr_types: HashMap::new(),
+            // expr_types: HashMap::new(),
             variable_types: HashMap::new(),
             function_types: HashMap::new(),
             errors: vec![],

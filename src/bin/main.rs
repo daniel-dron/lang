@@ -40,6 +40,7 @@ fn print(context: &ExecutionContext, params: Vec<Value>) -> Result<Value, String
 }
 
 fn assert_vm(context: &ExecutionContext, params: Vec<Value>) -> Result<Value, String> {
+    let _ = context;
     // expected params
     // arg1: boolean
     // arg2: expected message string
@@ -126,8 +127,7 @@ fn main() {
                     let mut execution_context = vm.create_context(&unit);
 
                     // run global init
-                    // let status = vm.run_named(&mut execution_context, "__global__");
-                    let status = vm.run_named(&mut execution_context, "__global__");
+                    let _ = vm.run_named(&mut execution_context, "__global__");
 
                     println!("========= CALLING INIT ==========");
                     match vm.run_named(&mut execution_context, "init") {
@@ -147,67 +147,6 @@ fn main() {
                 let span = &source[error.span.start..error.span.end];
                 println!("[Err] {}\n{:#?}", span, error);
             }
-
-            // match e.token {
-            //     Some(token) => {
-            // let line = token.line;
-            // let column = token.column - token.lexeme.len() + 1;
-            // let token_length = token.lexeme.len();
-
-            // // Split the source into lines and get the error line
-            // let lines: Vec<&str> = source.split('\n').collect();
-
-            // if line > 0 && line <= lines.len() {
-            //     let error_line = lines[line - 1];
-            //     let line_info = format!("[{}:{}]: ", line, column);
-
-            //     // Format the error title
-            //     let error_title = "E0001: Found an unexpected start of expression";
-
-            //     // Print error title, location, and code
-            //     println!("\x1b[1;31m{}\x1b[0m", error_title);
-            //     println!("{}{}", line_info, error_line);
-
-            //     // Create squiggly underline
-            //     let padding = " ".repeat(column + line_info.len() - 2); // 1 for the ^
-            //     let squiggles = "~".repeat(token_length);
-
-            //     // Calculate position for the pointer line
-            //     // The pointer should point to the position before the token (where the operator should go)
-            //     let pointer_position = column + line_info.len() - 2; // -1 for zero-indexing, -1 to point before token
-
-            //     // Create the pointer line with a helpful suggestion
-            //     let pointer_padding = " ".repeat(pointer_position);
-
-            //     // Print the pointer line// Print the squiggly underline and error message
-            //     println!(
-            //         "{}\x1b[32m│\x1b[31m{} {}\x1b[0m ",
-            //         padding, squiggles, e.message
-            //     );
-            //     println!("\x1b[32m{}│\x1b[0m", pointer_padding);
-            //     println!(
-            //         "{}\x1b[32m╰── place a ';' or an operator (+, -, *, /) here\x1b[0m",
-            //         pointer_padding
-            //     );
-
-            //     // Print a more detailed explanation/help text
-            //     println!(
-            //         "\nHelp: Found numeric literal '{}' where an operator was expected.",
-            //         token.lexeme
-            //     );
-            //     println!(
-            //         "Adjacent expressions must be separated by an operator or terminated with a semicolon."
-            //     );
-            // } else {
-            //     println!("\x1b[1;31mE0001: Missing Operator\x1b[0m");
-            //     println!("Error at position {:#?}: {}", token, e.message);
-            // }
-            //     }
-            //     None => {
-            //         println!("\x1b[1;31mE0001: Syntax Error\x1b[0m");
-            //         println!("Error at end of file: {}", e.message);
-            //     }
-            // }
         }
     }
 }

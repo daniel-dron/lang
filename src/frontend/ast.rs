@@ -38,7 +38,7 @@ impl Span {
 pub enum TypeAnnotation {
     Named(String, Span),
     Function(Vec<TypeAnnotation>, Box<TypeAnnotation>), // fn(i32, bool) -> String
-    Never, // ! (never type)
+    Never,                                              // ! (never type)
 }
 
 #[derive(Debug, Clone)]
@@ -83,13 +83,13 @@ pub enum UnaryOp {
 
 #[derive(Debug, Clone)]
 pub enum ExprKind {
-    Literal(Literal),     // Keep as is (already a separate type)
-    Identifier(String),   // Keep as is (single field is fine)
-    Binary(BinaryExpr),   // Already using struct - good!
-    Unary(UnaryExpr),     // Convert to struct
-    Block(BlockExpr),     // Convert to struct
-    Call(CallExpr),       // Convert to struct
-    Closure(ClosureExpr), // Convert to struct
+    Literal(Literal),
+    Identifier(String),
+    Binary(BinaryExpr),
+    Unary(UnaryExpr),
+    Block(BlockExpr),
+    Call(CallExpr),
+    Closure(ClosureExpr),
 }
 
 #[derive(Debug, Clone)]

@@ -82,7 +82,7 @@ impl VirtualMachine {
         instruction: Instruction,
         context: &mut ExecutionContext,
     ) -> ExecutionResult {
-        let mut frame = &mut context.call_stack[context.current_frame];
+        let frame = &mut context.call_stack[context.current_frame];
 
         match &instruction.op {
             OpCode::LoadConstant { dest, constant } => {
@@ -302,7 +302,7 @@ impl VirtualMachine {
     ) -> Value {
         let frame = &context.call_stack[context.current_frame - target.scope];
         let declarations = &context.unit.functions[frame.prototype_id.0].declarations;
-        let key = declarations
+        let _key = declarations
             .iter()
             .find_map(|(k, v)| if v == &target.idx { Some(k) } else { None });
 
@@ -411,7 +411,10 @@ impl VirtualMachine {
                             let mut call_frame = CallFrame {
                                 prototype_id: FunctionId(prototype_id),
                                 ip: 0,
-                                registers: vec![Value::Number(0.0); prototype.register_allocator.len()],
+                                registers: vec![
+                                    Value::Number(0.0);
+                                    prototype.register_allocator.len()
+                                ],
                                 upvalues: vec![],
                                 ret,
                             };
@@ -442,7 +445,10 @@ impl VirtualMachine {
                             let mut call_frame = CallFrame {
                                 prototype_id: FunctionId(closure.function_id),
                                 ip: 0,
-                                registers: vec![Value::Number(0.0); prototype.register_allocator.len()],
+                                registers: vec![
+                                    Value::Number(0.0);
+                                    prototype.register_allocator.len()
+                                ],
                                 upvalues: closure.upvalues.clone(),
                                 ret,
                             };

@@ -162,7 +162,7 @@ impl<'a> NewParser<'a> {
         )
     }
 
-    fn is_valid_operator(&self) -> bool {
+    fn _is_valid_operator(&self) -> bool {
         self.check(TokenType::Plus)
             || self.check(TokenType::Minus)
             || self.check(TokenType::Star)

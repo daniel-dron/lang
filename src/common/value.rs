@@ -82,7 +82,7 @@ impl Display for Value {
             Value::Boolean(b) => write!(f, "{}", b),
             Value::String(s) => write!(f, "{}", s),
             Value::Function(index) => write!(f, "@Function{{Unknown__{}}}>", index),
-            Value::Closure(closure) => todo!(),
+            Value::Closure(_) => todo!(),
             Value::Unitialized => todo!(),
         }
     }
