@@ -820,7 +820,7 @@ impl CompilationUnit {
                 let closure_prototype = self.compile_function(
                     &FunctionDeclarationStmt {
                         name: name.clone(),
-                        return_ty: None,
+                        return_ty: closure_expr.return_type.clone(),
                         parameters: closure_expr.parameters.clone(),
                         body: closure_expr.body.clone(),
                     },

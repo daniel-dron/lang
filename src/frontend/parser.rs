@@ -2,6 +2,8 @@ use std::{fmt::Debug, vec};
 
 use crate::frontend::ast::*;
 use crate::frontend::lexer::*;
+use crate::types::FunctionType;
+use crate::types::Type;
 
 #[derive(Debug)]
 pub struct NewParser<'a> {
@@ -458,6 +460,18 @@ impl<'a> NewParser<'a> {
         self.expect(TokenType::LeftParen)?;
         let args = self.parse_parameters()?;
         self.expect(TokenType::RightParen)?;
+
+        // return type annotation
+        let return_ty = if self.check(TokenType::ArrowRight) {
+            self.advance();
+            self.parse_type()?
+        } else {
+            TypeAnnotation {
+                ty: Type::Never,
+                span: Span { start: 0, end: 0 },
+            }
+        };
+
         let body = self.block()?;
 
         if let ExprKind::Block(_) = &body.kind {
@@ -476,7 +490,7 @@ impl<'a> NewParser<'a> {
                 ExprKind::Closure(ClosureExpr {
                     parameters,
                     body: Box::new(body),
-                    return_type: None,
+                    return_type: return_ty,
                 }),
                 self.span_from(start),
             ))
@@ -537,12 +551,8 @@ impl<'a> NewParser<'a> {
         // type annotation
         let ty = if self.check(TokenType::Colon) {
             self.advance();
-            let ty_start = self.current;
-            let ty = self.expect(TokenType::Identifier)?;
-            Some(TypeAnnotation::Named(
-                ty.lexeme.clone(),
-                self.span_from(ty_start),
-            ))
+
+            Some(self.parse_type()?)
         } else {
             None
         };
@@ -615,14 +625,9 @@ impl<'a> NewParser<'a> {
                 format!("Missing type annotation for argument '{}'", name.lexeme),
             )
         })?;
-        let ty = self.expect(TokenType::Identifier)?.clone();
+        let ty = self.parse_type()?;
 
-        let start = self.current;
-        Ok((
-            name.lexeme.clone(),
-            name.span,
-            TypeAnnotation::Named(ty.lexeme.clone(), self.span_from(start)),
-        ))
+        Ok((name.lexeme.clone(), name.span, ty))
     }
 
     fn parse_type(&mut self) -> Result<TypeAnnotation, NewParserError> {
@@ -631,29 +636,49 @@ impl<'a> NewParser<'a> {
             self.advance(); // fn
             self.expect(TokenType::LeftParen)?;
 
-            let mut types: Vec<TypeAnnotation> = vec![];
+            let mut types: Vec<Type> = vec![];
 
             if !self.check(TokenType::RightParen) {
-                types.push(self.parse_type()?);
+                types.push(self.parse_type()?.ty);
 
                 while self.check(TokenType::Comma) {
                     self.advance(); // ,
-                    types.push(self.parse_type()?);
+                    types.push(self.parse_type()?.ty);
                 }
             }
             self.advance(); // right paren
 
             self.expect(TokenType::ArrowRight)?;
 
-            let ret_type = self.parse_type()?;
+            let ret_type = self.parse_type()?.ty;
 
-            Ok(TypeAnnotation::Function(types, Box::new(ret_type)))
+            Ok(TypeAnnotation {
+                ty: Type::Function(FunctionType {
+                    parameters: types,
+                    ret_ty: Box::new(ret_type),
+                }),
+                span: self.span_from(ty_start),
+            })
         } else {
-            let ty = self.expect(TokenType::Identifier)?;
-            Ok(TypeAnnotation::Named(
-                ty.lexeme.clone(),
-                self.span_from(ty_start),
-            ))
+            let ty = self.expect(TokenType::Identifier)?.clone();
+            let type_name = ty.lexeme.as_str();
+
+            let ty = match type_name {
+                "f64" => Type::Float64,
+                "str" => Type::String,
+                "bool" => Type::Boolean,
+                _ => {
+                    return Err(self.error(
+                        ErrorType::InvalidType,
+                        format!("Unknown type: {}", type_name),
+                    ));
+                }
+            };
+
+            Ok(TypeAnnotation {
+                ty,
+                span: self.span_from(ty_start),
+            })
         }
     }
 
@@ -669,9 +694,12 @@ impl<'a> NewParser<'a> {
         // return type annotation
         let ty = if self.check(TokenType::ArrowRight) {
             self.advance();
-            Some(self.parse_type()?)
+            self.parse_type()?
         } else {
-            Some(TypeAnnotation::Never)
+            TypeAnnotation {
+                ty: Type::Never,
+                span: Span { start: 0, end: 0 },
+            }
         };
 
         let body = self.block()?;

@@ -1,3 +1,5 @@
+use crate::types::Type;
+
 #[derive(Debug)]
 pub struct NodeIdGenerator {
     next_id: usize,
@@ -35,10 +37,9 @@ impl Span {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum TypeAnnotation {
-    Named(String, Span),
-    Function(Vec<TypeAnnotation>, Box<TypeAnnotation>), // fn(i32, bool) -> String
-    Never,                                              // ! (never type)
+pub struct TypeAnnotation {
+    pub ty: Type,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]
@@ -122,7 +123,7 @@ pub struct CallExpr {
 pub struct ClosureExpr {
     pub parameters: Vec<Parameter>,
     pub body: Box<Expr>,
-    pub return_type: Option<TypeAnnotation>,
+    pub return_type: TypeAnnotation,
 }
 
 #[derive(Debug, Clone)]
@@ -182,7 +183,7 @@ pub struct IfStmt {
 #[derive(Debug, Clone)]
 pub struct FunctionDeclarationStmt {
     pub name: String,
-    pub return_ty: Option<TypeAnnotation>,
+    pub return_ty: TypeAnnotation,
     pub parameters: Vec<Parameter>,
     pub body: Box<Expr>, // usually ExprKind::Block
 }

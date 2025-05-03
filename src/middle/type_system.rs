@@ -135,27 +135,15 @@ impl TypeChecker {
                 // if the declaration was type annotated, we must check if it was a valid type,
                 // and if the initializer type matches with it
                 if let Some(ty_annotation) = &let_stmt.ty {
-                    let ty_annotation = match Type::from(ty_annotation) {
-                        Ok(ty) => ty,
-                        Err(e) => {
-                            return Err(TypeError {
-                                span: statment.span.clone(),
-                                ty: TypeErrorKind::TODO(format!("Let Type error ({:?})", e)),
-                            });
-                        }
-                    };
-
-                    if initializer_type != ty_annotation {
-                        if let TypeAnnotation::Named(_, span) = let_stmt.ty.clone().unwrap() {
-                            return Err(TypeError {
-                                span: statment.span.clone(),
-                                ty: TypeErrorKind::MissmatchedTypes {
-                                    expected: Expected::Span(span.clone()),
-                                    got_ty: initializer_type,
-                                    got_span: let_stmt.initializer.span.clone(),
-                                },
-                            });
-                        }
+                    if initializer_type != ty_annotation.ty {
+                        return Err(TypeError {
+                            span: statment.span.clone(),
+                            ty: TypeErrorKind::MissmatchedTypes {
+                                expected: Expected::Span(ty_annotation.span.clone()),
+                                got_ty: initializer_type,
+                                got_span: let_stmt.initializer.span.clone(),
+                            },
+                        });
                     }
                 }
 
@@ -215,17 +203,10 @@ impl TypeChecker {
                 let parameters = function_declaration_stmt
                     .parameters
                     .iter()
-                    .map(|param| Type::from(&param.type_annotation))
-                    .collect::<Result<Vec<Type>, TypeError>>()?;
+                    .map(|param| param.type_annotation.ty.clone())
+                    .collect::<Vec<Type>>();
 
-                let expected_ty = if let Some(ty) = &function_declaration_stmt.return_ty {
-                    Type::from(ty).map_err(|err| TypeError {
-                        span: statment.span.clone(),
-                        ty: TypeErrorKind::TODO(format!("Function Declaration Err 1 ({:#?})", err)),
-                    })?
-                } else {
-                    Type::Never
-                };
+                let expected_ty = &function_declaration_stmt.return_ty.ty;
 
                 // must register the function type first. must be available for recursion
                 self.register_symbol(
@@ -237,6 +218,7 @@ impl TypeChecker {
                 );
 
                 self.push_scope();
+
                 // register param types first
                 for (param, ty) in function_declaration_stmt.parameters.iter().zip(&parameters) {
                     self.register_symbol(param.name.clone(), ty.clone());
@@ -245,7 +227,7 @@ impl TypeChecker {
                 // parse the body
                 let ret_ty = self.infer_expression(&mut function_declaration_stmt.body)?;
 
-                if ret_ty != expected_ty {
+                if ret_ty != *expected_ty {
                     return Err(TypeError {
                         span: statment.span.clone(),
                         ty: TypeErrorKind::TODO("Function Declaration Err 2".into()),
@@ -429,22 +411,11 @@ impl TypeChecker {
                 // parse the body
                 let ret_ty = self.infer_expression(&mut closure_expr.body)?;
 
-                if let Some(ty) = &closure_expr.return_type {
-                    let expected_ty = Type::from(ty)?;
-
-                    if ret_ty != expected_ty {
-                        return Err(TypeError {
-                            span: expression.span.clone(),
-                            ty: TypeErrorKind::TODO("Closure Err 1".into()),
-                        });
-                    }
-                }
-
                 let parameters = closure_expr
                     .parameters
                     .iter()
-                    .map(|param| Type::from(&param.type_annotation))
-                    .collect::<Result<Vec<Type>, TypeError>>()?;
+                    .map(|param| param.type_annotation.ty.clone())
+                    .collect::<Vec<Type>>();
 
                 // register param types first
                 for (param, ty) in closure_expr.parameters.iter().zip(&parameters) {

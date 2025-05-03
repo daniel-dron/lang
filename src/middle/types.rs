@@ -21,27 +21,6 @@ pub struct FunctionType {
 }
 
 impl Type {
-    pub fn from(value: &TypeAnnotation) -> Result<Self, TypeError> {
-        match value {
-            TypeAnnotation::Named(name, _) => match name.as_str() {
-                "f64" => Ok(Type::Float64),
-                "str" => Ok(Type::String),
-                "bool" => Ok(Type::Boolean),
-                _ => todo!(),
-            },
-            TypeAnnotation::Never => Ok(Type::Never),
-            TypeAnnotation::Function(type_annotations, type_annotation) => {
-                Ok(Type::Function(FunctionType {
-                    parameters: type_annotations
-                        .iter()
-                        .map(|ty| Type::from(ty))
-                        .collect::<Result<Vec<Type>, TypeError>>()?,
-                    ret_ty: Box::new(Type::from(type_annotation)?),
-                }))
-            }
-        }
-    }
-
     pub fn to_string(&self) -> String {
         match self {
             Type::Float64 => "f64".into(),
