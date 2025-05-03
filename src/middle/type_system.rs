@@ -30,26 +30,19 @@ pub enum TypeErrorKind {
 
 #[derive(Debug)]
 struct TypeScope {
-    pub variable_types: HashMap<String, Type>,
-
-    pub function_types: HashMap<String, FunctionType>,
+    pub symbols: HashMap<String, Type>,
 }
 
 impl TypeScope {
     pub fn new() -> Self {
         Self {
-            variable_types: HashMap::new(),
-            function_types: HashMap::new(),
+            symbols: HashMap::new(),
         }
     }
 
     fn lookup_symbol(&self, name: &String) -> Option<Type> {
-        if let Some(ty) = self.variable_types.get(name) {
+        if let Some(ty) = self.symbols.get(name) {
             return Some(ty.clone());
-        }
-
-        if let Some(ty) = self.function_types.get(name) {
-            return Some(Type::Function(ty.clone()));
         }
 
         None
@@ -76,7 +69,7 @@ impl TypeChecker {
 
     pub fn register_native(&mut self, name: String, ty: FunctionType) {
         // native functions are registered on global level
-        self.scopes[0].function_types.insert(name, ty);
+        self.scopes[0].symbols.insert(name, Type::Function(ty));
     }
 
     fn push_scope(&mut self) {
@@ -101,11 +94,7 @@ impl TypeChecker {
     // register a symbol on the current scope
     fn register_symbol(&mut self, name: String, ty: Type) {
         let scope = self.scopes.last_mut().unwrap();
-        if let Type::Function(ty) = ty {
-            scope.function_types.insert(name, ty);
-        } else {
-            scope.variable_types.insert(name, ty);
-        }
+        scope.symbols.insert(name, ty);
     }
 
     pub fn infer(&mut self, mut ast: Vec<Stmt>) -> Result<Vec<Stmt>, Vec<TypeError>> {
