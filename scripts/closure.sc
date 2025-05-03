@@ -58,7 +58,7 @@ fn persistence_example() {
     print("\n3. Closure Persistence Example:");
     
     // Function that returns a closure
-    fn create_counter(start) {
+    fn create_counter(start: f64) -> fn() -> f64 {
         let count = start;
         
         let counter = @() {
