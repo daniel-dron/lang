@@ -65,9 +65,6 @@
         }
     ```
 
-- [ ] variable shadowing
-    - [ ] same scope
-    - [ ] nested scopes
 - [ ] do not allow assigning a void return to a variable
     ``` rust
         fn foo() {

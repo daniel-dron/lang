@@ -28,17 +28,40 @@ pub enum TypeErrorKind {
     TODO(String),
 }
 
+#[derive(Debug)]
+struct TypeScope {
+    pub variable_types: HashMap<String, Type>,
+
+    pub function_types: HashMap<String, FunctionType>,
+}
+
+impl TypeScope {
+    pub fn new() -> Self {
+        Self {
+            variable_types: HashMap::new(),
+            function_types: HashMap::new(),
+        }
+    }
+
+    fn lookup_symbol(&self, name: &String) -> Option<Type> {
+        if let Some(ty) = self.variable_types.get(name) {
+            return Some(ty.clone());
+        }
+
+        if let Some(ty) = self.function_types.get(name) {
+            return Some(Type::Function(ty.clone()));
+        }
+
+        None
+    }
+}
+
 /// The type checker not only enforces type correctness but also infers types
 #[derive(Debug)]
 pub struct TypeChecker {
     // For expressions (based on NodeId)
     // expr_types: HashMap<NodeId, Type>,
-
-    // For variables in each scope
-    variable_types: HashMap<String, Type>,
-
-    // For functions
-    function_types: HashMap<String, FunctionType>,
+    scopes: Vec<TypeScope>,
 
     errors: Vec<TypeError>,
 }
@@ -46,15 +69,43 @@ pub struct TypeChecker {
 impl TypeChecker {
     pub fn new() -> Self {
         Self {
-            // expr_types: HashMap::new(),
-            variable_types: HashMap::new(),
-            function_types: HashMap::new(),
+            scopes: vec![TypeScope::new()],
             errors: vec![],
         }
     }
 
     pub fn register_native(&mut self, name: String, ty: FunctionType) {
-        self.function_types.insert(name, ty);
+        // native functions are registered on global level
+        self.scopes[0].function_types.insert(name, ty);
+    }
+
+    fn push_scope(&mut self) {
+        self.scopes.push(TypeScope::new());
+    }
+
+    fn pop_scope(&mut self) {
+        self.scopes.pop();
+    }
+
+    fn lookup_symbol(&self, name: String) -> Option<Type> {
+        // iterate in reverse, starting from scope with highest depth
+        for scope in self.scopes.iter().rev() {
+            if let Some(ty) = scope.lookup_symbol(&name) {
+                return Some(ty);
+            }
+        }
+
+        None
+    }
+
+    // register a symbol on the current scope
+    fn register_symbol(&mut self, name: String, ty: Type) {
+        let scope = self.scopes.last_mut().unwrap();
+        if let Type::Function(ty) = ty {
+            scope.function_types.insert(name, ty);
+        } else {
+            scope.variable_types.insert(name, ty);
+        }
     }
 
     pub fn infer(&mut self, mut ast: Vec<Stmt>) -> Result<Vec<Stmt>, Vec<TypeError>> {
@@ -119,13 +170,12 @@ impl TypeChecker {
                     }
                 }
 
-                self.variable_types
-                    .insert(let_stmt.name.clone(), initializer_type.clone());
+                self.register_symbol(let_stmt.name.clone(), initializer_type);
 
                 Ok(None)
             }
             StmtKind::Assignment(name, expr) => {
-                let ty = match self.variable_types.get(name) {
+                let ty = match self.lookup_symbol(name.clone()) {
                     Some(ty) => Ok(ty.clone()),
                     None => Err(TypeError {
                         span: statment.span.clone(),
@@ -173,6 +223,7 @@ impl TypeChecker {
                 }
             }
             StmtKind::FunctionDeclaration(function_declaration_stmt) => {
+                self.push_scope();
                 let parameters = function_declaration_stmt
                     .parameters
                     .iter()
@@ -181,7 +232,7 @@ impl TypeChecker {
 
                 // register param types first
                 for (param, ty) in function_declaration_stmt.parameters.iter().zip(&parameters) {
-                    self.variable_types.insert(param.name.clone(), ty.clone());
+                    self.register_symbol(param.name.clone(), ty.clone());
                 }
 
                 let expected_ty = if let Some(ty) = &function_declaration_stmt.return_ty {
@@ -194,12 +245,12 @@ impl TypeChecker {
                 };
 
                 // must register the function type first. must be available for recursion
-                self.function_types.insert(
+                self.register_symbol(
                     function_declaration_stmt.name.clone(),
-                    FunctionType {
+                    Type::Function(FunctionType {
                         parameters,
                         ret_ty: Box::new(expected_ty.clone()),
-                    },
+                    }),
                 );
 
                 // parse the body
@@ -212,6 +263,7 @@ impl TypeChecker {
                     });
                 }
 
+                self.pop_scope();
                 Ok(None)
             }
         }
@@ -224,19 +276,13 @@ impl TypeChecker {
                 Literal::String(_) => Ok(Type::String),
                 Literal::Boolean(_) => Ok(Type::Boolean),
             },
-            ExprKind::Identifier(identifier) => {
-                if let Some(ty) = self.variable_types.get(identifier) {
-                    return Ok(ty.clone());
-                }
-
-                if let Some(ty) = self.function_types.get(identifier) {
-                    return Ok(Type::Function(ty.clone()));
-                }
-                Err(TypeError {
+            ExprKind::Identifier(identifier) => match self.lookup_symbol(identifier.clone()) {
+                Some(ty) => Ok(ty),
+                None => Err(TypeError {
                     span: expression.span.clone(),
                     ty: TypeErrorKind::TODO("Identifier Type Error".into()),
-                })
-            }
+                }),
+            },
             ExprKind::Binary(binary_expr) => {
                 let left_type = self.infer_expression(&mut binary_expr.left)?;
                 let right_type = self.infer_expression(&mut binary_expr.right)?;
@@ -313,6 +359,8 @@ impl TypeChecker {
                 }
             }
             ExprKind::Block(block_expr) => {
+                self.push_scope();
+
                 let mut ret_types = vec![];
 
                 for stmt in &mut block_expr.statements {
@@ -343,6 +391,7 @@ impl TypeChecker {
                     });
                 }
 
+                self.pop_scope();
                 return Ok(ret_types[0].clone());
             }
             ExprKind::Call(call_expr) => match self.infer_expression(&mut call_expr.callee)? {
@@ -410,7 +459,7 @@ impl TypeChecker {
 
                 // register param types first
                 for (param, ty) in closure_expr.parameters.iter().zip(&parameters) {
-                    self.variable_types.insert(param.name.clone(), ty.clone());
+                    self.register_symbol(param.name.clone(), ty.clone());
                 }
 
                 Ok(Type::Function(FunctionType {
