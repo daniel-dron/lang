@@ -223,17 +223,11 @@ impl TypeChecker {
                 }
             }
             StmtKind::FunctionDeclaration(function_declaration_stmt) => {
-                self.push_scope();
                 let parameters = function_declaration_stmt
                     .parameters
                     .iter()
                     .map(|param| Type::from(&param.type_annotation))
                     .collect::<Result<Vec<Type>, TypeError>>()?;
-
-                // register param types first
-                for (param, ty) in function_declaration_stmt.parameters.iter().zip(&parameters) {
-                    self.register_symbol(param.name.clone(), ty.clone());
-                }
 
                 let expected_ty = if let Some(ty) = &function_declaration_stmt.return_ty {
                     Type::from(ty).map_err(|err| TypeError {
@@ -248,10 +242,16 @@ impl TypeChecker {
                 self.register_symbol(
                     function_declaration_stmt.name.clone(),
                     Type::Function(FunctionType {
-                        parameters,
+                        parameters: parameters.clone(),
                         ret_ty: Box::new(expected_ty.clone()),
                     }),
                 );
+
+                self.push_scope();
+                // register param types first
+                for (param, ty) in function_declaration_stmt.parameters.iter().zip(&parameters) {
+                    self.register_symbol(param.name.clone(), ty.clone());
+                }
 
                 // parse the body
                 let ret_ty = self.infer_expression(&mut function_declaration_stmt.body)?;
