@@ -131,11 +131,17 @@ pub struct Expr {
     pub id: NodeId,
     pub kind: ExprKind,
     pub span: Span, // this span is actually into tokens
+    pub ty: Type,
 }
 
 impl Expr {
     pub fn new(id: NodeId, kind: ExprKind, span: Span) -> Self {
-        Self { id, kind, span }
+        Self {
+            id,
+            kind,
+            span,
+            ty: Type::Never,
+        }
     }
 }
 
@@ -158,11 +164,17 @@ pub struct Stmt {
     pub id: NodeId,
     pub kind: StmtKind,
     pub span: Span, // this span is actually into tokens!!
+    pub ty: Type,
 }
 
 impl Stmt {
     pub fn new(id: NodeId, kind: StmtKind, span: Span) -> Self {
-        Self { id, kind, span }
+        Self {
+            id,
+            kind,
+            span,
+            ty: Type::Never,
+        }
     }
 }
 

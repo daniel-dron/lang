@@ -124,6 +124,7 @@ impl TypeChecker {
                 // only block expressions may return something
                 // stuff like `10 + 10;` does not
                 if let ExprKind::Block(_) = &expr.kind {
+                    statment.ty = ty.clone();
                     Ok(Some(ty))
                 } else {
                     Ok(None)
@@ -190,11 +191,18 @@ impl TypeChecker {
                     }
                 }
 
+                if let Some(ty) = &then_ty {
+                    statment.ty = ty.clone();
+                }
+
                 Ok(then_ty)
             }
             StmtKind::Return(expr) => {
                 if let Some(expr) = expr {
-                    Ok(Some(self.infer_expression(expr)?))
+                    let ty = self.infer_expression(expr)?;
+
+                    statment.ty = ty.clone();
+                    Ok(Some(ty))
                 } else {
                     Ok(Some(Type::Never))
                 }
@@ -241,7 +249,7 @@ impl TypeChecker {
     }
 
     pub fn infer_expression(&mut self, expression: &mut Expr) -> Result<Type, TypeError> {
-        match &mut expression.kind {
+        let ty = match &mut expression.kind {
             ExprKind::Literal(literal) => match literal {
                 Literal::Number(_) => Ok(Type::Float64),
                 Literal::String(_) => Ok(Type::String),
@@ -264,6 +272,7 @@ impl TypeChecker {
                         if binary_expr.operator == BinaryOp::Add
                             && (left_type == Type::String || right_type == Type::String)
                         {
+                            expression.ty = Type::String;
                             return Ok(Type::String);
                         }
 
@@ -363,7 +372,7 @@ impl TypeChecker {
                 }
 
                 self.pop_scope();
-                return Ok(ret_types[0].clone());
+                Ok(ret_types[0].clone())
             }
             ExprKind::Call(call_expr) => match self.infer_expression(&mut call_expr.callee)? {
                 Type::Float64 | Type::Boolean | Type::String | Type::Never => Err(TypeError {
@@ -374,6 +383,7 @@ impl TypeChecker {
                     // LITTLE HACK FOR NOW since we dont support variadic parameter count
                     if let ExprKind::Identifier(name) = &call_expr.callee.kind {
                         if name == "print" {
+                            expression.ty = *function_type.ret_ty.clone();
                             return Ok(*function_type.ret_ty.clone());
                         }
                     }
@@ -427,6 +437,9 @@ impl TypeChecker {
                     ret_ty: Box::new(ret_ty),
                 }))
             }
-        }
+        };
+
+        expression.ty = ty.clone()?;
+        return ty;
     }
 }

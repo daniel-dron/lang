@@ -60,6 +60,7 @@ impl<'a> NewParser<'a> {
             id: self.id_gen.next(),
             kind: expr,
             span,
+            ty: Type::Never,
         }
     }
 
@@ -68,6 +69,7 @@ impl<'a> NewParser<'a> {
             id: self.id_gen.next(),
             kind: stmt,
             span,
+            ty: Type::Never,
         }
     }
 
