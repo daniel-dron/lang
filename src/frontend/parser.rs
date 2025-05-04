@@ -192,7 +192,7 @@ impl<'a> NewParser<'a> {
 
         let start = self.current;
 
-        match self.peek() {
+        let mut expr = match self.peek() {
             Some(token) => {
                 let token = token.clone();
                 match token.ty {
@@ -253,6 +253,38 @@ impl<'a> NewParser<'a> {
                             }
                         }
                     }
+                    TokenType::LeftBracket => {
+                        self.advance(); // [
+
+                        let mut values = Vec::new();
+
+                        if !self.check(TokenType::RightBracket) {
+                            loop {
+                                if values.len() >= 255 {
+                                    return Err(self.error(
+                                        ErrorType::Unexpected,
+                                        "Cannot have array initializer with more than 255 values."
+                                            .into(),
+                                    ));
+                                }
+
+                                values.push(self.expression()?);
+
+                                if !self.check(TokenType::Comma) {
+                                    break;
+                                }
+
+                                self.advance();
+                            }
+                        }
+
+                        self.expect(TokenType::RightBracket)?; // ]
+
+                        Ok(self.untyped_expr(
+                            ExprKind::Literal(Literal::Array(values)),
+                            self.span_from(start),
+                        ))
+                    }
                     _ => Err(self.error(
                         ErrorType::ExpressionExpected,
                         format!("Expected expression, got '{}'", token.lexeme).into(),
@@ -263,7 +295,26 @@ impl<'a> NewParser<'a> {
                 ErrorType::ExpressionExpected,
                 "Expected expression, got none.".into(),
             )),
+        }?;
+
+        // Array accesses
+        if self.check(TokenType::LeftBracket) {
+            self.advance();
+
+            let index = self.expression()?;
+
+            self.expect(TokenType::RightBracket)?;
+
+            expr = self.untyped_expr(
+                ExprKind::IndexAccess(ArrayIndexExpr {
+                    target: Box::new(expr),
+                    index: Box::new(index),
+                }),
+                self.span_from(start),
+            );
         }
+
+        Ok(expr)
     }
 
     fn call(&mut self) -> Result<Expr, NewParserError> {
@@ -661,6 +712,15 @@ impl<'a> NewParser<'a> {
                 }),
                 span: self.span_from(ty_start),
             })
+        } else if self.check(TokenType::LeftBracket) {
+            self.advance(); // [
+            let ty = self.parse_type()?.ty;
+            self.expect(TokenType::RightBracket)?; // ]
+
+            Ok(TypeAnnotation {
+                ty: Type::Array(Box::new(ty)),
+                span: self.span_from(ty_start),
+            })
         } else {
             let ty = self.expect(TokenType::Identifier)?.clone();
             let type_name = ty.lexeme.as_str();
@@ -734,20 +794,29 @@ impl<'a> NewParser<'a> {
         ))
     }
 
+    fn parse_assignable(&mut self) -> Result<Assignable, NewParserError> {
+        let expr = self.primary()?;
+
+        match expr.kind {
+            ExprKind::Identifier(name) => Ok(Assignable::Identifier(name)),
+            ExprKind::IndexAccess(index_access) => Ok(Assignable::IndexAccess {
+                object: index_access.target,
+                index: index_access.index,
+            }),
+            _ => Err(self.error(ErrorType::Expected, format!("Expected an assignable type!"))),
+        }
+    }
+
     fn assignment_statement(&mut self) -> Result<Stmt, NewParserError> {
         let start = self.current;
-        let identifier = self.expect(TokenType::Identifier)?.clone();
+        let identifier = self.parse_assignable()?;
+
         self.expect(TokenType::Equal)?;
-
         let assignment = self.expression()?;
-
         self.expect(TokenType::Semicolon)?;
 
         let span = self.span_from(start);
-        Ok(self.stmt(
-            StmtKind::Assignment(identifier.lexeme.clone(), Box::new(assignment)),
-            span,
-        ))
+        Ok(self.stmt(StmtKind::Assignment(identifier, Box::new(assignment)), span))
     }
 
     fn if_statement(&mut self) -> Result<Stmt, NewParserError> {
@@ -795,27 +864,42 @@ impl<'a> NewParser<'a> {
             self.return_statement()
         } else if self.check(TokenType::If) {
             self.if_statement()
-        } else if self.check(TokenType::Identifier) {
-            let saved_position = self.current;
-            self.advance();
+        } else {
+            if self.check(TokenType::Identifier) {
+                // look for an equal (=) until (;) for assignment
+                let saved_position = self.current;
+                let mut is_assignment = false;
 
-            if self.check(TokenType::Equal) {
+                while self.current < self.tokens.len() && !self.check(TokenType::Semicolon) {
+                    if self.check(TokenType::Equal) {
+                        self.advance();
+                        // must be only one =, not == (comparison)
+                        if !self.check(TokenType::Equal) {
+                            is_assignment = true;
+                        }
+                        break;
+                    }
+                    self.advance();
+                }
+
                 self.current = saved_position;
-                let assignment = self.assignment_statement()?;
-                Ok(assignment)
+
+                if is_assignment {
+                    let assignment = self.assignment_statement()?;
+                    Ok(assignment)
+                } else {
+                    let expression = self.expression()?;
+                    self.expect(TokenType::Semicolon)?;
+                    let span = self.span_from(start);
+                    Ok(self.stmt(StmtKind::Expr(Box::new(expression)), span))
+                }
             } else {
-                self.current = saved_position;
                 let expression = self.expression()?;
                 self.expect(TokenType::Semicolon)?;
+
                 let span = self.span_from(start);
                 Ok(self.stmt(StmtKind::Expr(Box::new(expression)), span))
             }
-        } else {
-            let expression = self.expression()?;
-            self.expect(TokenType::Semicolon)?;
-
-            let span = self.span_from(start);
-            Ok(self.stmt(StmtKind::Expr(Box::new(expression)), span))
         }
     }
 

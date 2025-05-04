@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::frontend::ast::{
-    BinaryOp, Expr, ExprKind, Literal, Span, Stmt, StmtKind, TypeAnnotation, UnaryOp,
+    Assignable, BinaryOp, Expr, ExprKind, Literal, Span, Stmt, StmtKind, TypeAnnotation, UnaryOp,
 };
 
 use super::types::{FunctionType, Type};
@@ -131,7 +131,7 @@ impl TypeChecker {
                 }
             }
             StmtKind::Let(let_stmt) => {
-                let initializer_type = self.infer_expression(&mut let_stmt.initializer)?;
+                let mut initializer_type = self.infer_expression(&mut let_stmt.initializer)?;
 
                 // if the declaration was type annotated, we must check if it was a valid type,
                 // and if the initializer type matches with it
@@ -148,18 +148,65 @@ impl TypeChecker {
                     }
                 }
 
+                if let Type::Array(ty) = &mut initializer_type {
+                    if **ty == Type::Never {
+                        // in the case the initializer was an empty array, we will accept it if the let statement was type annotated
+                        if let Some(ty_annotation) = &let_stmt.ty {
+                            **ty = ty_annotation.ty.clone();
+                        } else {
+                            return Err(TypeError {
+                                span: statment.span.clone(),
+                                ty: TypeErrorKind::TODO(
+                                    "Invalid empty array on untyped variable".into(),
+                                ),
+                            });
+                        }
+                    }
+                }
+
                 self.register_symbol(let_stmt.name.clone(), initializer_type);
 
                 Ok(None)
             }
-            StmtKind::Assignment(name, expr) => {
-                let ty = match self.lookup_symbol(name.clone()) {
-                    Some(ty) => Ok(ty.clone()),
-                    None => Err(TypeError {
-                        span: statment.span.clone(),
-                        ty: TypeErrorKind::TODO("Statement Type Error".into()),
-                    }),
-                }?;
+            StmtKind::Assignment(target, expr) => {
+                // infer the type of the target
+                let ty = match target {
+                    Assignable::Identifier(target) => match self.lookup_symbol(target.clone()) {
+                        Some(ty) => Ok(ty.clone()),
+                        None => Err(TypeError {
+                            span: statment.span.clone(),
+                            ty: TypeErrorKind::TODO("Statement Type Error".into()),
+                        }),
+                    }?,
+                    Assignable::IndexAccess { object, index } => {
+                        let left = self.infer_expression(object)?;
+                        let right = self.infer_expression(index)?;
+
+                        if let Type::Array(ty) = left {
+                            if let Type::Float64 = right {
+                                Ok(*ty)
+                            } else {
+                                Err(TypeError {
+                                    span: statment.span.clone(),
+                                    ty: TypeErrorKind::MissmatchedTypes {
+                                        expected: Expected::Named(Type::Float64.to_string()),
+                                        got_ty: right,
+                                        got_span: expr.span.clone(),
+                                    },
+                                })
+                            }
+                        } else {
+                            Err(TypeError {
+                                span: statment.span.clone(),
+                                ty: TypeErrorKind::MissmatchedTypes {
+                                    expected: Expected::Named(left.to_string().into()),
+                                    got_ty: right,
+                                    got_span: expr.span.clone(),
+                                },
+                            })
+                        }
+                    }?,
+                };
 
                 let right_ty = self.infer_expression(expr)?;
 
@@ -254,6 +301,29 @@ impl TypeChecker {
                 Literal::Number(_) => Ok(Type::Float64),
                 Literal::String(_) => Ok(Type::String),
                 Literal::Boolean(_) => Ok(Type::Boolean),
+                Literal::Array(exprs) => {
+                    if exprs.is_empty() {
+                        // Empty array, we'll infer the type later based on assignment context
+                        Ok(Type::Array(Box::new(Type::Never)))
+                    } else {
+                        let first_type = self.infer_expression(&mut exprs[0])?;
+
+                        // Check all other elements have the same type
+                        for (_, expr) in exprs.iter_mut().enumerate().skip(1) {
+                            let element_type = self.infer_expression(expr)?;
+                            if element_type != first_type {
+                                return Err(TypeError {
+                                    span: expr.span.clone(),
+                                    ty: TypeErrorKind::TODO(
+                                        "Array elements not all of the same type".into(),
+                                    ),
+                                });
+                            }
+                        }
+
+                        Ok(Type::Array(Box::new(first_type)))
+                    }
+                }
             },
             ExprKind::Identifier(identifier) => match self.lookup_symbol(identifier.clone()) {
                 Some(ty) => Ok(ty),
@@ -375,10 +445,12 @@ impl TypeChecker {
                 Ok(ret_types[0].clone())
             }
             ExprKind::Call(call_expr) => match self.infer_expression(&mut call_expr.callee)? {
-                Type::Float64 | Type::Boolean | Type::String | Type::Never => Err(TypeError {
-                    span: expression.span.clone(),
-                    ty: TypeErrorKind::TODO("Invalid Call Err".into()),
-                }),
+                Type::Float64 | Type::Boolean | Type::String | Type::Array(_) | Type::Never => {
+                    Err(TypeError {
+                        span: expression.span.clone(),
+                        ty: TypeErrorKind::TODO("Invalid Call Err".into()),
+                    })
+                }
                 Type::Function(function_type) => {
                     // LITTLE HACK FOR NOW since we dont support variadic parameter count
                     if let ExprKind::Identifier(name) = &call_expr.callee.kind {
@@ -436,6 +508,22 @@ impl TypeChecker {
                     parameters,
                     ret_ty: Box::new(ret_ty),
                 }))
+            }
+            ExprKind::IndexAccess(array_index_expr) => {
+                let target_ty = self.infer_expression(&mut array_index_expr.target)?;
+                let index_ty = self.infer_expression(&mut array_index_expr.index)?;
+
+                match target_ty {
+                    Type::Array(array) => {
+                        // check if index is a number
+                        if let Type::Float64 = index_ty {
+                            Ok(*array.clone())
+                        } else {
+                            todo!()
+                        }
+                    }
+                    _ => todo!(),
+                }
             }
         };
 

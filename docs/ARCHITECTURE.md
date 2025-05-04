@@ -38,6 +38,16 @@ this is done after the variable name using `: type` or after the function parame
     }
 ```
 
+### array
+
+arrays are dynamic. but can only hold one type
+``` rust
+
+    let list: [f64] = [1, 2, 3, 4];
+    let val: f64 = list[2]; // returns value or panics
+    list[2] = 10; // [1, 2, 10, 4]
+```
+
 ## functions
 
 functions work like in any other language. they take in zero or more arguments and optionally return one

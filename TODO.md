@@ -73,7 +73,21 @@
 
         let test = foo(); // this should return an error
     ```
-- [ ] array types
+
+- [x] array types
+- [ ] primitive vs complex types
+    - [ ] look into completly removing tagged union types at runtime in the VM
+        the vm has no need to know the type of the values if the compiler emits type specific instructions
+        this optimization would halven the runtime memory usage, since a value would go from 16 bytes (8 value + 1 tag + pad to 16)
+        to only being 8 bytes (64 bits = value itself)
+- [ ] track variable life times
+    - [ ] for register reuse
+    - [ ] for moved objects
+- [ ] implement move, copy, clone and reference
+    - [ ] reference
+    - [ ] copy
+    - [ ] move
+    - [ ] clone
 - [ ] for loops
     - [ ] on ranges
     - [ ] on iterables (str, arr)

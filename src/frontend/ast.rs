@@ -55,6 +55,7 @@ pub enum Literal {
     Number(f64),
     String(String),
     Boolean(bool),
+    Array(Vec<Expr>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -86,11 +87,18 @@ pub enum UnaryOp {
 pub enum ExprKind {
     Literal(Literal),
     Identifier(String),
+    IndexAccess(ArrayIndexExpr),
     Binary(BinaryExpr),
     Unary(UnaryExpr),
     Block(BlockExpr),
     Call(CallExpr),
     Closure(ClosureExpr),
+}
+
+#[derive(Debug, Clone)]
+pub struct ArrayIndexExpr {
+    pub target: Box<Expr>,
+    pub index: Box<Expr>,
 }
 
 #[derive(Debug, Clone)]
@@ -150,10 +158,19 @@ impl Expr {
 ///
 
 #[derive(Debug, Clone)]
+pub enum Assignable {
+    Identifier(String),        // Regular variable assignment: x = ...
+    IndexAccess {              // Array element assignment: arr[0] = ...
+        object: Box<Expr>,
+        index: Box<Expr>,
+    },
+}
+
+#[derive(Debug, Clone)]
 pub enum StmtKind {
     Expr(Box<Expr>),
     Let(LetStmt),
-    Assignment(String, Box<Expr>),
+    Assignment(Assignable, Box<Expr>),
     If(IfStmt),
     Return(Option<Expr>),
     FunctionDeclaration(FunctionDeclarationStmt),

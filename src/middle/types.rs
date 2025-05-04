@@ -1,7 +1,3 @@
-use crate::frontend::ast::TypeAnnotation;
-
-use super::type_system::TypeError;
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
     Float64,
@@ -10,7 +6,7 @@ pub enum Type {
 
     Function(FunctionType),
     // Tuple(Vec<Type>),
-    // Array(Box<Type>, Option<usize>),
+    Array(Box<Type>),
     Never, // For expressions that never return
 }
 
@@ -53,6 +49,7 @@ impl Type {
                 )
             }
             Type::Never => "())".into(),
+            Type::Array(ty) => format!("[{:?}]", *ty),
         }
     }
 }

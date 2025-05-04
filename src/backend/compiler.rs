@@ -97,6 +97,20 @@ pub enum OpCode {
         src: RegisterId,
         idx: usize,
     },
+    CreateArray {
+        dest: RegisterId,
+        elements: Vec<RegisterId>,
+    },
+    GetArrayElement {
+        dest: RegisterId,
+        array: RegisterId,
+        index: RegisterId,
+    },
+    SetArrayElement {
+        array: RegisterId,
+        index: RegisterId,
+        value: RegisterId,
+    },
 }
 
 // temporary struct for now. In the future might have more members for debug purposes
@@ -378,52 +392,75 @@ impl CompilationUnit {
                     .declarations
                     .insert(declaration_stmt.name.clone(), dest);
             }
-            StmtKind::Assignment(name, initializer) => {
+            StmtKind::Assignment(target, initializer) => {
                 let src = self.compile_expr(prototype_id, initializer);
 
-                let prototype = &self.functions[prototype_id.0];
-                match prototype.declarations.get(name) {
-                    Some(id) => {
+                match target {
+                    Assignable::Identifier(target) => {
+                        let prototype = &self.functions[prototype_id.0];
+                        match prototype.declarations.get(target) {
+                            Some(id) => {
+                                self.emit_instruction(
+                                    prototype_id,
+                                    Instruction {
+                                        op: OpCode::Move { dest: *id, src },
+                                    },
+                                );
+                            }
+                            None => {
+                                if let Some(upvalue) = self.needs_capture(prototype_id, target) {
+                                    self.emit_instruction(
+                                        prototype_id,
+                                        Instruction {
+                                            op: OpCode::SetUpvalue {
+                                                src,
+                                                idx: prototype
+                                                    .upvalues
+                                                    .iter()
+                                                    .position(|val| *val == upvalue)
+                                                    .expect("Upvalue wasnt in the list"),
+                                            },
+                                        },
+                                    );
+                                } else if self.globals.contains_key(target) {
+                                    self.emit_instruction(
+                                        prototype_id,
+                                        Instruction {
+                                            op: OpCode::StoreGlobal {
+                                                dest: target.clone(),
+                                                src,
+                                            },
+                                        },
+                                    );
+                                } else {
+                                    panic!("Variable '{}' not declared!", target);
+                                }
+                            }
+                        }
+
+                        let prototype = &mut self.functions[prototype_id.0];
+                        prototype.register_allocator.free(src);
+                    }
+                    Assignable::IndexAccess { object, index } => {
+                        let array_reg = self.compile_expr(prototype_id, object);
+                        let index_reg = self.compile_expr(prototype_id, index);
+
                         self.emit_instruction(
                             prototype_id,
                             Instruction {
-                                op: OpCode::Move { dest: *id, src },
+                                op: OpCode::SetArrayElement {
+                                    array: array_reg,
+                                    index: index_reg,
+                                    value: src,
+                                },
                             },
                         );
-                    }
-                    None => {
-                        if let Some(upvalue) = self.needs_capture(prototype_id, name) {
-                            self.emit_instruction(
-                                prototype_id,
-                                Instruction {
-                                    op: OpCode::SetUpvalue {
-                                        src,
-                                        idx: prototype
-                                            .upvalues
-                                            .iter()
-                                            .position(|val| *val == upvalue)
-                                            .expect("Upvalue wasnt in the list"),
-                                    },
-                                },
-                            );
-                        } else if self.globals.contains_key(name) {
-                            self.emit_instruction(
-                                prototype_id,
-                                Instruction {
-                                    op: OpCode::StoreGlobal {
-                                        dest: name.clone(),
-                                        src,
-                                    },
-                                },
-                            );
-                        } else {
-                            panic!("Variable '{}' not declared!", name);
-                        }
+
+                        let prototype = &mut self.functions[prototype_id.0];
+                        prototype.register_allocator.free(array_reg);
+                        prototype.register_allocator.free(index_reg);
                     }
                 }
-
-                let prototype = &mut self.functions[prototype_id.0];
-                prototype.register_allocator.free(src);
             }
             StmtKind::Return(expr) => {
                 let mut ret: Option<RegisterId> = None;
@@ -519,6 +556,36 @@ impl CompilationUnit {
             }
             ExprKind::Literal(Literal::String(val)) => {
                 self.emit_constant_load(prototype_id, Value::String(val.clone()))
+            }
+            ExprKind::Literal(Literal::Array(vec)) => {
+                let element_registers = vec
+                    .iter()
+                    .map(|val| self.compile_expr(prototype_id, val))
+                    .collect::<Vec<RegisterId>>();
+
+                let dest = self.functions[prototype_id.0]
+                    .register_allocator
+                    .get_free()
+                    .expect("Ran out of registers");
+
+                // Emit instruction to create the array
+                self.emit_instruction(
+                    prototype_id,
+                    Instruction {
+                        op: OpCode::CreateArray {
+                            dest,
+                            elements: element_registers.clone(),
+                        },
+                    },
+                );
+
+                // Free the element registers since they're now contained in the array
+                let prototype = &mut self.functions[prototype_id.0];
+                for reg in element_registers {
+                    prototype.register_allocator.free(reg);
+                }
+
+                dest
             }
             ExprKind::Identifier(id) => {
                 let dest = self.functions[prototype_id.0]
@@ -841,6 +908,24 @@ impl CompilationUnit {
                 // self.functions_map.insert(name, index);
 
                 self.emit_constant_load(prototype_id, Value::Function(closure_prototype));
+
+                dest
+            }
+            ExprKind::IndexAccess(array_index_expr) => {
+                let array = self.compile_expr(prototype_id, &array_index_expr.target);
+                let index = self.compile_expr(prototype_id, &array_index_expr.index);
+
+                let dest = self.functions[prototype_id.0]
+                    .register_allocator
+                    .get_free()
+                    .expect("Ran out of registers");
+
+                self.emit_instruction(
+                    prototype_id,
+                    Instruction {
+                        op: OpCode::GetArrayElement { dest, array, index },
+                    },
+                );
 
                 dest
             }

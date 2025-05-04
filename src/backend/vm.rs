@@ -289,6 +289,51 @@ impl VirtualMachine {
                     }
                 }
             }
+            OpCode::CreateArray { dest, elements } => {
+                let vec = Value::Array(Rc::new(RefCell::new(
+                    elements
+                        .iter()
+                        .map(|reg| frame.registers[reg.0].clone())
+                        .collect::<Vec<Value>>(),
+                )));
+                frame.registers[dest.0] = vec;
+            }
+            OpCode::GetArrayElement { dest, array, index } => {
+                if let Value::Array(array_rc) = &frame.registers[array.0] {
+                    if let Value::Number(index) = frame.registers[index.0] {
+                        let value = {
+                            let array_borrow = array_rc.borrow();
+                            let idx = index as usize;
+                            if idx < array_borrow.len() {
+                                array_borrow[idx].clone()
+                            } else {
+                                panic!(
+                                    "Array index out of bounds: {} >= {}",
+                                    idx,
+                                    array_borrow.len()
+                                );
+                            }
+                        };
+                        frame.registers[dest.0] = value;
+                    } else {
+                        panic!("Array index must be a number");
+                    }
+                } else {
+                    panic!("Expected array value");
+                }
+            }
+            OpCode::SetArrayElement {
+                array,
+                index,
+                value,
+            } => {
+                if let Value::Array(vec) = &frame.registers[array.0] {
+                    if let Value::Number(index) = frame.registers[index.0] {
+                        let mut array_borrow = vec.borrow_mut();
+                        array_borrow[index as usize] = frame.registers[value.0].clone();
+                    }
+                }
+            }
         }
 
         Ok(ExecuteStatus::Continue)

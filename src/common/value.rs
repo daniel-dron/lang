@@ -38,6 +38,7 @@ pub enum Value {
     Number(f64),
     Boolean(bool),
     String(String),
+    Array(Rc<RefCell<Vec<Value>>>),
     Function(usize), // index into Prototype::functions
     Closure(Rc<Closure>),
 }
@@ -84,6 +85,17 @@ impl Display for Value {
             Value::Function(index) => write!(f, "@Function{{Unknown__{}}}>", index),
             Value::Closure(_) => todo!(),
             Value::Unitialized => todo!(),
+            Value::Array(vec) => {
+                write!(
+                    f,
+                    "[{}]",
+                    vec.borrow()
+                        .iter()
+                        .map(|val| format!("{}", val))
+                        .collect::<Vec<String>>()
+                        .join(", ")
+                )
+            }
         }
     }
 }
