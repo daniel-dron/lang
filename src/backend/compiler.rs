@@ -373,14 +373,10 @@ impl CompilationUnit {
             StmtKind::Let(declaration_stmt) => {
                 let dest = self.compile_expr(prototype_id, &declaration_stmt.initializer);
 
-                // check if variable was already declared
                 let prototype = &mut self.functions[prototype_id.0];
-                match prototype.declarations.get(&declaration_stmt.name) {
-                    Some(_) => panic!("Variable '{}' already declared!", declaration_stmt.name),
-                    None => prototype
-                        .declarations
-                        .insert(declaration_stmt.name.clone(), dest),
-                };
+                prototype
+                    .declarations
+                    .insert(declaration_stmt.name.clone(), dest);
             }
             StmtKind::Assignment(name, initializer) => {
                 let src = self.compile_expr(prototype_id, initializer);
