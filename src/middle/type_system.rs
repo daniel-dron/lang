@@ -132,6 +132,18 @@ impl TypeChecker {
             }
             StmtKind::Let(let_stmt) => {
                 let mut initializer_type = self.infer_expression(&mut let_stmt.initializer)?;
+                
+                // the right side will never return anything, we can´t assign this value
+                if initializer_type == Type::Never {
+                    return Err(TypeError {
+                        span: statment.span.clone(),
+                        ty: TypeErrorKind::MissmatchedTypes {
+                            expected: Expected::Named("Any".into()),
+                            got_ty: initializer_type,
+                            got_span: let_stmt.initializer.span.clone(),
+                        },
+                    });
+                }
 
                 // if the declaration was type annotated, we must check if it was a valid type,
                 // and if the initializer type matches with it
@@ -209,6 +221,18 @@ impl TypeChecker {
                 };
 
                 let right_ty = self.infer_expression(expr)?;
+
+                // the right side will never return anything, we can´t assign this value
+                if right_ty == Type::Never {
+                    return Err(TypeError {
+                        span: statment.span.clone(),
+                        ty: TypeErrorKind::MissmatchedTypes {
+                            expected: Expected::Named("Any".into()),
+                            got_ty: right_ty,
+                            got_span: expr.span.clone(),
+                        },
+                    });
+                }
 
                 if ty != right_ty {
                     return Err(TypeError {

@@ -48,7 +48,7 @@ impl Type {
                     function_type.ret_ty.to_string()
                 )
             }
-            Type::Never => "())".into(),
+            Type::Never => "()".into(),
             Type::Array(ty) => format!("[{:?}]", *ty),
         }
     }
