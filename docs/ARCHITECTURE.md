@@ -38,6 +38,25 @@ this is done after the variable name using `: type` or after the function parame
     }
 ```
 
+### custom types
+
+```rust
+
+    type Person {
+        name: str,
+        age: f64
+    }
+
+    binds Person {
+        fn description(ref self) -> str {
+            return self.name " is " + self.age + " years old";
+        }
+    }
+
+    let person: Person = Person { name: "Michael", age: 23 };
+    print(person.description);
+```
+
 ### array
 
 arrays are dynamic. but can only hold one type
@@ -46,6 +65,56 @@ arrays are dynamic. but can only hold one type
     let list: [f64] = [1, 2, 3, 4];
     let val: f64 = list[2]; // returns value or panics
     list[2] = 10; // [1, 2, 10, 4]
+
+    list
+```
+
+### copy and ref
+
+for primitive types, the default operation is always copy
+``` rust
+    let x: f64 = 10;
+    let y = x; // 10 is copied
+```
+
+for reference types, the default operation is always ref
+``` rust
+    let x: [f64] = [ 1, 2, 3, 4 ];
+    let y = x; // has reference to x
+
+    y[2] = 100;
+    print(x); // [1, 2, 100, 4]
+```
+
+these are also the default behaviour when passing stuff as parameters
+```rust
+
+    fn append_double(vec: [f64], val: f64) {
+        vec.append(val * 2);
+    }
+
+    let vec: [f64] = [1, 2, 3];
+    append_double(vec, 4);
+
+    // vec == [1, 2, 3, 8]
+```
+
+you can also choose which method to use to assign or pass parameters
+```rust
+    fn double(val: ref f64) {
+        val = val*2;
+    }
+
+    let x = 10;
+    double(ref x); // x == 20 now
+
+    fn do_stuff(vec: [f64], f64) -> [f64] {
+        vec.append(f64);
+    }
+
+    let vec = [1, 2, 3, 4];
+    let new_vec = do_stuff(copy vec, 5); // new_vec == [1, 2, 3, 4, 5]
+                                         // vec     == [1, 2, 3, 4] 
 ```
 
 ## functions

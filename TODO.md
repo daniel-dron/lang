@@ -21,79 +21,26 @@
             dispatcher.decode_next() -> OpCode // <-- (returns the original opcode)
         ```
 
-- [ ] Static types.
-    - [x] Implement support for static types. Do not allow re-typing at comp/runtime
-    - [x] Type checks during compile and runtime
-    - [ ] Type inference
-        - [ ] Scopes during type inference (for stuff like parameters and shadowing)
-        - [ ] Detect conflict in multiple return paths type
-            ```
-                /// this func has a conflict of return types
-                fn test(b: bool) -> f64 {
-                    if b {
-                        return 10;
-                    } else {
-                        return "text";
-                    }
-                }
-
-                // this one also does (float vs never)
-                fn foo(bar: bool) -> f64 {
-                    if bar {
-                        return 10;
-                    }
-                }
-            ```
-    ```
-        // infered
-        let var = 10.0f; // Number
-        let text = "Hello World!"; // String
-        let array = [1, 2, 3, 4, 5]; // Array
-        
-        // explicit
-        let var: f64 = 10.0f; // Number
-        let text: str = "Hello World!"; // String
-        let array: vec<f64> = [1, 2, 3, 4, 5]; // Array
-    ```
-
-- [ ] Detect paths that are missing return statements
-    ```
-        fn foo(bar: bool) -> f64 {
-            if bar {
-                return 10;
-            }
-        }
-    ```
-
-- [ ] do not allow assigning a void return to a variable
-    ``` rust
-        fn foo() {
-            // nothing
-        }
-
-        let test = foo(); // this should return an error
-    ```
-
 - [x] array types
-- [ ] primitive vs complex types
+    - [ ] proper operations like push/remove (later with objects)
+- [x] primitive vs complex types
     - [ ] look into completly removing tagged union types at runtime in the VM
         the vm has no need to know the type of the values if the compiler emits type specific instructions
         this optimization would halven the runtime memory usage, since a value would go from 16 bytes (8 value + 1 tag + pad to 16)
         to only being 8 bytes (64 bits = value itself)
+- [ ] class/struct
+    - [ ] custom types
+    - [ ] member fields/methods
 - [ ] track variable life times
     - [ ] for register reuse
-    - [ ] for moved objects
-- [ ] implement move, copy, clone and reference
-    - [ ] reference
-    - [ ] copy
-    - [ ] move
-    - [ ] clone
+- [ ] copy objects
 - [ ] for loops
     - [ ] on ranges
     - [ ] on iterables (str, arr)
 - [ ] match with simple patterns
 - [ ] optional
 - [ ] errors
+- [ ] JIT
 
 ## Labels Issues:
 - bug: For errors and incorrect behavior
