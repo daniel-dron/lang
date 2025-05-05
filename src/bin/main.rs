@@ -1,6 +1,5 @@
 use std::{
-    env, fs, process,
-    time::{SystemTime, UNIX_EPOCH},
+    env, fs, process, time::{SystemTime, UNIX_EPOCH}
 };
 
 use lang_core::{
@@ -48,7 +47,7 @@ fn assert_vm(context: &ExecutionContext, params: Vec<Value>) -> Result<Value, St
         if *b {
             return Ok(Value::Boolean(true));
         } else {
-            Err(message.clone())
+            Err(message.to_string())
         }
     } else {
         panic!("Wrong parameters on assert call: {:?}", params);
@@ -111,8 +110,6 @@ fn main() {
                 },
             );
             let new_ast = type_checker.infer(v);
-
-            println!("{:#?}", type_checker);
 
             match new_ast {
                 Ok(stmts) => {

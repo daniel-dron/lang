@@ -1,6 +1,7 @@
 use std::{
     collections::{BTreeSet, HashMap},
     fmt::Debug,
+    rc::Rc,
     vec,
 };
 
@@ -555,7 +556,7 @@ impl CompilationUnit {
                 self.emit_constant_load(prototype_id, Value::Boolean(*val))
             }
             ExprKind::Literal(Literal::String(val)) => {
-                self.emit_constant_load(prototype_id, Value::String(val.clone()))
+                self.emit_constant_load(prototype_id, Value::String(Rc::new(val.clone())))
             }
             ExprKind::Literal(Literal::Array(vec)) => {
                 let element_registers = vec

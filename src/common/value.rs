@@ -35,9 +35,12 @@ pub struct Closure {
 #[derive(Debug, Clone)]
 pub enum Value {
     Unitialized, // Unitialized values. This type is not accessible to the programmer. Its a compiler intrinsic
+    // Primitive
     Number(f64),
     Boolean(bool),
-    String(String),
+
+    // Reference
+    String(Rc<String>),
     Array(Rc<RefCell<Vec<Value>>>),
     Function(usize), // index into Prototype::functions
     Closure(Rc<Closure>),
@@ -106,13 +109,19 @@ impl Add for Value {
     fn add(self, rhs: Self) -> Self::Output {
         match (self, rhs) {
             (Value::Number(left), Value::Number(right)) => Ok(Value::Number(left + right)),
-            (Value::String(left), Value::String(right)) => Ok(Value::String(left + &right)),
-            (Value::String(left), Value::Number(right)) => {
-                Ok(Value::String(left + &right.to_string()))
+            (Value::String(left), Value::String(right)) => {
+                Ok(Value::String(Rc::new(format!("{}{}", left, right))))
             }
-            (Value::Number(left), Value::String(right)) => {
-                Ok(Value::String(left.to_string() + &right))
-            }
+            (Value::String(left), Value::Number(right)) => Ok(Value::String(Rc::new(format!(
+                "{}{}",
+                left,
+                &right.to_string()
+            )))),
+            (Value::Number(left), Value::String(right)) => Ok(Value::String(Rc::new(format!(
+                "{}{}",
+                left.to_string(),
+                right
+            )))),
             (a, b) => Err(format!("Cannot add {:?} and {:?}", a, b)),
         }
     }
