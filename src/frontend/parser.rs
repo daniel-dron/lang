@@ -2,7 +2,6 @@ use std::{fmt::Debug, vec};
 
 use crate::frontend::ast::*;
 use crate::frontend::lexer::*;
-use crate::types::FunctionType;
 use crate::types::Type;
 
 #[derive(Debug)]
@@ -521,6 +520,7 @@ impl<'a> NewParser<'a> {
         } else {
             TypeAnnotation {
                 ty: Type::Never,
+                expr: TypeExpr::Unspecified,
                 span: Span { start: 0, end: 0 },
             }
         };
@@ -689,56 +689,46 @@ impl<'a> NewParser<'a> {
             self.advance(); // fn
             self.expect(TokenType::LeftParen)?;
 
-            let mut types: Vec<Type> = vec![];
+            let mut types: Vec<TypeExpr> = vec![];
 
             if !self.check(TokenType::RightParen) {
-                types.push(self.parse_type()?.ty);
+                types.push(self.parse_type()?.expr);
 
                 while self.check(TokenType::Comma) {
                     self.advance(); // ,
-                    types.push(self.parse_type()?.ty);
+                    types.push(self.parse_type()?.expr);
                 }
             }
             self.advance(); // right paren
 
             self.expect(TokenType::ArrowRight)?;
 
-            let ret_type = self.parse_type()?.ty;
+            let ret_type = self.parse_type()?.expr;
 
             Ok(TypeAnnotation {
-                ty: Type::Function(FunctionType {
+                expr: TypeExpr::Function {
                     parameters: types,
-                    ret_ty: Box::new(ret_type),
-                }),
+                    return_ty: Box::new(ret_type),
+                },
+                ty: Type::Never,
                 span: self.span_from(ty_start),
             })
         } else if self.check(TokenType::LeftBracket) {
             self.advance(); // [
-            let ty = self.parse_type()?.ty;
+            let ty = self.parse_type()?.expr;
             self.expect(TokenType::RightBracket)?; // ]
 
             Ok(TypeAnnotation {
-                ty: Type::Array(Box::new(ty)),
+                expr: TypeExpr::Array(Box::new(ty)),
+                ty: Type::Never,
                 span: self.span_from(ty_start),
             })
         } else {
             let ty = self.expect(TokenType::Identifier)?.clone();
-            let type_name = ty.lexeme.as_str();
-
-            let ty = match type_name {
-                "f64" => Type::Float64,
-                "str" => Type::String,
-                "bool" => Type::Boolean,
-                _ => {
-                    return Err(self.error(
-                        ErrorType::InvalidType,
-                        format!("Unknown type: {}", type_name),
-                    ));
-                }
-            };
 
             Ok(TypeAnnotation {
-                ty,
+                ty: Type::Never,
+                expr: TypeExpr::Named(ty.lexeme.clone()),
                 span: self.span_from(ty_start),
             })
         }
@@ -760,6 +750,7 @@ impl<'a> NewParser<'a> {
         } else {
             TypeAnnotation {
                 ty: Type::Never,
+                expr: TypeExpr::Unspecified,
                 span: Span { start: 0, end: 0 },
             }
         };

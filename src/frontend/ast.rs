@@ -36,9 +36,10 @@ impl Span {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct TypeAnnotation {
     pub ty: Type,
+    pub expr: TypeExpr,
     pub span: Span,
 }
 
@@ -135,6 +136,17 @@ pub struct ClosureExpr {
 }
 
 #[derive(Debug, Clone)]
+pub enum TypeExpr {
+    Unspecified,
+    Named(String),
+    Function {
+        parameters: Vec<TypeExpr>,
+        return_ty: Box<TypeExpr>,
+    },
+    Array(Box<TypeExpr>),
+}
+
+#[derive(Debug, Clone)]
 pub struct Expr {
     pub id: NodeId,
     pub kind: ExprKind,
@@ -159,8 +171,9 @@ impl Expr {
 
 #[derive(Debug, Clone)]
 pub enum Assignable {
-    Identifier(String),        // Regular variable assignment: x = ...
-    IndexAccess {              // Array element assignment: arr[0] = ...
+    Identifier(String), // Regular variable assignment: x = ...
+    IndexAccess {
+        // Array element assignment: arr[0] = ...
         object: Box<Expr>,
         index: Box<Expr>,
     },

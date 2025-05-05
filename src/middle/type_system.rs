@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
 use crate::frontend::ast::{
-    Assignable, BinaryOp, Expr, ExprKind, Literal, Span, Stmt, StmtKind, TypeAnnotation, UnaryOp,
+    Assignable, BinaryOp, Expr, ExprKind, Literal, Parameter, Span, Stmt, StmtKind, TypeAnnotation,
+    TypeExpr, UnaryOp,
 };
 
 use super::types::{FunctionType, Type};
@@ -97,6 +98,54 @@ impl TypeChecker {
         scope.symbols.insert(name, ty);
     }
 
+    pub fn apply_type(&mut self, type_annotation: &mut TypeAnnotation) -> Result<(), TypeError> {
+        let ty = self.resolve_type_expr(&type_annotation.expr, &type_annotation.span)?;
+        type_annotation.ty = ty;
+        Ok(())
+    }
+
+    pub fn resolve_type_expr(
+        &mut self,
+        ty_expr: &TypeExpr,
+        span: &Span,
+    ) -> Result<Type, TypeError> {
+        match ty_expr {
+            TypeExpr::Named(name) => {
+                // Check if it's a built-in type
+                match name.as_str() {
+                    "f64" => Ok(Type::Float64),
+                    "str" => Ok(Type::String),
+                    "bool" => Ok(Type::Boolean),
+                    _ => Err(TypeError {
+                        span: span.clone(),
+                        ty: TypeErrorKind::TODO(format!("Unknown type: {}", name)),
+                    }),
+                }
+            }
+            TypeExpr::Function {
+                parameters,
+                return_ty,
+            } => {
+                let param_types = parameters
+                    .iter()
+                    .map(|param| self.resolve_type_expr(param, span))
+                    .collect::<Result<Vec<Type>, TypeError>>()?;
+
+                let ret_ty = self.resolve_type_expr(return_ty, span)?;
+
+                Ok(Type::Function(FunctionType {
+                    parameters: param_types,
+                    ret_ty: Box::new(ret_ty),
+                }))
+            }
+            TypeExpr::Array(elem_type) => {
+                let ty = self.resolve_type_expr(elem_type, span)?;
+                Ok(Type::Array(Box::new(ty)))
+            }
+            TypeExpr::Unspecified => Ok(Type::Never),
+        }
+    }
+
     pub fn infer(&mut self, mut ast: Vec<Stmt>) -> Result<Vec<Stmt>, Vec<TypeError>> {
         // recursively look through statements and expressions and infer type and propagate it up
         // similar to compiler architecture. its depth first
@@ -131,8 +180,35 @@ impl TypeChecker {
                 }
             }
             StmtKind::Let(let_stmt) => {
+                /*
+                 *  Variable declarations. Can be type annotated or not, depending on the
+                 *  initializer. Cannot declare a variable with an initializer that does not return
+                 *  any type (Type::Never).
+                 *
+                 *  Case 1. Deduced
+                 *  let x = 10;
+                 *  In this case, the type is deduced from the initalizer and attached to `x`
+                 *
+                 *  Case 2. Annotated
+                 *  let x: f64 = 10;
+                 *  Since `x` is type annotated with `f64` we must check if it matches with the
+                 *  type infered from the initializer expression.
+                 *
+                 *  Case 3. Arrays
+                 *  For arrays there can be two cases. If you give it an non-empty array literal,
+                 *  all value types must be the same, and the type of `x` can then be infered from
+                 *  the array literal as `[type]`.
+                 *  let x = [1, 2, 3, 4]; // x: [f64]
+                 *
+                 *  If the initializer is an empty array literal `[]`, then the declaration must be
+                 *  type annotated, as it's impossible to know what the array type is.
+                 *  TODO: later on, we can lift this limitation by looking for an access to the
+                 *  array and infer the type from there
+                 *  let x = []; // error, what type is `[]`?
+                 *
+                 */
                 let mut initializer_type = self.infer_expression(&mut let_stmt.initializer)?;
-                
+
                 // the right side will never return anything, we can´t assign this value
                 if initializer_type == Type::Never {
                     return Err(TypeError {
@@ -145,36 +221,45 @@ impl TypeChecker {
                     });
                 }
 
-                // if the declaration was type annotated, we must check if it was a valid type,
-                // and if the initializer type matches with it
-                if let Some(ty_annotation) = &let_stmt.ty {
-                    if initializer_type != ty_annotation.ty {
-                        return Err(TypeError {
-                            span: statment.span.clone(),
-                            ty: TypeErrorKind::MissmatchedTypes {
-                                expected: Expected::Span(ty_annotation.span.clone()),
-                                got_ty: initializer_type,
-                                got_span: let_stmt.initializer.span.clone(),
-                            },
-                        });
-                    }
-                }
+                match &mut let_stmt.ty {
+                    Some(type_annotation) => {
+                        self.apply_type(type_annotation)?;
 
-                if let Type::Array(ty) = &mut initializer_type {
-                    if **ty == Type::Never {
-                        // in the case the initializer was an empty array, we will accept it if the let statement was type annotated
-                        if let Some(ty_annotation) = &let_stmt.ty {
-                            **ty = ty_annotation.ty.clone();
-                        } else {
+                        // we allow empty arrays, but they are of type [Never], so must be patched
+                        if let (Type::Array(init_ty), Type::Array(_)) =
+                            (&initializer_type, &type_annotation.ty)
+                        {
+                            if **init_ty == Type::Never {
+                                initializer_type = type_annotation.ty.clone();
+                            }
+                        }
+
+                        if type_annotation.ty != initializer_type {
                             return Err(TypeError {
                                 span: statment.span.clone(),
-                                ty: TypeErrorKind::TODO(
-                                    "Invalid empty array on untyped variable".into(),
-                                ),
+                                ty: TypeErrorKind::MissmatchedTypes {
+                                    expected: Expected::Span(type_annotation.span.clone()),
+                                    got_ty: initializer_type,
+                                    got_span: let_stmt.initializer.span.clone(),
+                                },
                             });
                         }
                     }
-                }
+                    None => {
+                        // if there was no type annotation, we must confirm that the initializer is
+                        // not an empty array
+                        if let Type::Array(array_ty) = &initializer_type {
+                            if **array_ty == Type::Never {
+                                return Err(TypeError {
+                                    span: statment.span.clone(),
+                                    ty: TypeErrorKind::TODO(
+                                        "Invalid empty array on untyped variable".into(),
+                                    ),
+                                });
+                            }
+                        }
+                    }
+                };
 
                 self.register_symbol(let_stmt.name.clone(), initializer_type);
 
@@ -279,6 +364,12 @@ impl TypeChecker {
                 }
             }
             StmtKind::FunctionDeclaration(function_declaration_stmt) => {
+                self.apply_type(&mut function_declaration_stmt.return_ty)?;
+
+                for param in &mut function_declaration_stmt.parameters {
+                    self.apply_type(&mut param.type_annotation)?;
+                }
+
                 let parameters = function_declaration_stmt
                     .parameters
                     .iter()
@@ -307,6 +398,7 @@ impl TypeChecker {
                 let ret_ty = self.infer_expression(&mut function_declaration_stmt.body)?;
 
                 if ret_ty != *expected_ty {
+                    println!("GOT: {:#?}", self);
                     return Err(TypeError {
                         span: statment.span.clone(),
                         ty: TypeErrorKind::TODO("Function Declaration Err 2".into()),
