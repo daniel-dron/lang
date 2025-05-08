@@ -1,5 +1,6 @@
 use core::panic;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::backend::compiler::*;
@@ -334,6 +335,37 @@ impl VirtualMachine {
                     }
                 }
             }
+            OpCode::CreateInstance { dest, fields } => {
+                let mut map = HashMap::new();
+
+                for (name, src) in fields {
+                    map.insert(name.clone(), frame.registers[src.0].clone());
+                }
+
+                frame.registers[dest.0] = Value::Instance(Rc::new(RefCell::new(map)));
+            }
+            OpCode::MemberAccess {
+                target,
+                dest,
+                field,
+            } => {
+                let val = if let Value::Instance(map) = &frame.registers[target.0] {
+                    map.borrow().get(field).unwrap().clone()
+                } else {
+                    unreachable!()
+                };
+
+                frame.registers[dest.0] = val;
+            }
+            OpCode::MemberSet { target, field, src } => {
+                let val = frame.registers[src.0].clone();
+
+                if let Value::Instance(map) = &frame.registers[target.0] {
+                    map.borrow_mut().insert(field.clone(), val);
+                } else {
+                    unreachable!()
+                }
+            }
         }
 
         Ok(ExecuteStatus::Continue)
@@ -388,7 +420,7 @@ impl VirtualMachine {
 
         context.call_stack.push(CallFrame {
             prototype_id: FunctionId(prototype_id),
-            registers: vec![Value::Number(0.0); prototype.register_allocator.len()],
+            registers: vec![Value::Number(0.0); prototype.register_allocator.max_used],
             upvalues: vec![],
             ip: 0,
             ret: RegisterId(0),
@@ -458,7 +490,7 @@ impl VirtualMachine {
                                 ip: 0,
                                 registers: vec![
                                     Value::Number(0.0);
-                                    prototype.register_allocator.len()
+                                    prototype.register_allocator.max_used
                                 ],
                                 upvalues: vec![],
                                 ret,
@@ -492,7 +524,7 @@ impl VirtualMachine {
                                 ip: 0,
                                 registers: vec![
                                     Value::Number(0.0);
-                                    prototype.register_allocator.len()
+                                    prototype.register_allocator.max_used
                                 ],
                                 upvalues: closure.upvalues.clone(),
                                 ret,

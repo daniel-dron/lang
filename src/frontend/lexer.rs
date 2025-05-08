@@ -10,6 +10,8 @@ pub enum TokenType {
     For,
     On,
     Return,
+    Type,
+    Binds,
 
     // literals
     Identifier,
@@ -173,6 +175,8 @@ impl Lexer {
             "or" => TokenType::Or,
             "false" | "true" => TokenType::Bool,
             "return" => TokenType::Return,
+            "type" => TokenType::Type,
+            "binds" => TokenType::Binds,
             _ => TokenType::Identifier,
         };
 

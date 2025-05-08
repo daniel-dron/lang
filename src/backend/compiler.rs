@@ -5,9 +5,12 @@ use std::{
     vec,
 };
 
-use crate::backend::vm::ExecutionContext;
 use crate::common::value::*;
 use crate::frontend::ast::*;
+use crate::{
+    backend::vm::ExecutionContext,
+    types::{Type, TypeDescriptor},
+};
 
 #[derive(Debug, Clone, Copy)]
 pub struct ConstantId(pub usize);
@@ -112,6 +115,20 @@ pub enum OpCode {
         index: RegisterId,
         value: RegisterId,
     },
+    CreateInstance {
+        dest: RegisterId,
+        fields: HashMap<String, RegisterId>,
+    },
+    MemberAccess {
+        target: RegisterId,
+        dest: RegisterId,
+        field: String,
+    },
+    MemberSet {
+        target: RegisterId,
+        field: String,
+        src: RegisterId,
+    },
 }
 
 // temporary struct for now. In the future might have more members for debug purposes
@@ -125,6 +142,7 @@ pub struct Instruction {
 pub struct RegisterAllocator {
     max: usize,
     available: BTreeSet<usize>,
+    pub max_used: usize,
 }
 
 impl Default for RegisterAllocator {
@@ -135,7 +153,11 @@ impl Default for RegisterAllocator {
             available.insert(i);
         }
 
-        Self { max, available }
+        Self {
+            max,
+            available,
+            max_used: 0,
+        }
     }
 }
 
@@ -143,13 +165,14 @@ impl RegisterAllocator {
     pub fn get_free(&mut self) -> Option<RegisterId> {
         if let Some(&number) = self.available.iter().next() {
             self.available.remove(&number);
+            self.max_used += 1;
             Some(RegisterId(number))
         } else {
             None
         }
     }
 
-    pub fn free(&mut self, number: RegisterId) -> bool {
+    pub fn free(&mut self, number: &RegisterId) -> bool {
         if number.0 > self.max {
             return false;
         }
@@ -191,6 +214,7 @@ pub struct CompilationUnit {
     pub functions_map: HashMap<String, usize>,
     pub constants: Vec<Value>,
     pub globals: HashMap<String, Value>,
+    pub named_types: HashMap<String, TypeDescriptor>,
 
     last_register: RegisterId,
 }
@@ -203,6 +227,7 @@ impl CompilationUnit {
             constants: vec![],
             globals: HashMap::new(),
             last_register: RegisterId(0),
+            named_types: HashMap::new(),
         };
 
         let mut boot_prototype = Prototype::default();
@@ -243,6 +268,14 @@ impl CompilationUnit {
                             );
                         }
                     };
+                }
+                StmtKind::TypeDeclaration(type_declaration_stmt) => {
+                    if let Type::NamedType(type_descriptor) = &type_declaration_stmt.ty {
+                        unit.named_types
+                            .insert(type_declaration_stmt.name.clone(), type_descriptor.clone());
+                    } else {
+                        panic!("Expected named type on type declaration!")
+                    }
                 }
                 _ => panic!("Unexpected statement {:#?}", statement),
             }
@@ -440,7 +473,7 @@ impl CompilationUnit {
                         }
 
                         let prototype = &mut self.functions[prototype_id.0];
-                        prototype.register_allocator.free(src);
+                        prototype.register_allocator.free(&src);
                     }
                     Assignable::IndexAccess { object, index } => {
                         let array_reg = self.compile_expr(prototype_id, object);
@@ -458,8 +491,22 @@ impl CompilationUnit {
                         );
 
                         let prototype = &mut self.functions[prototype_id.0];
-                        prototype.register_allocator.free(array_reg);
-                        prototype.register_allocator.free(index_reg);
+                        prototype.register_allocator.free(&array_reg);
+                        prototype.register_allocator.free(&index_reg);
+                    }
+                    Assignable::MemberAcess { target, field } => {
+                        let dest = self.compile_expr(prototype_id, target);
+
+                        self.emit_instruction(
+                            prototype_id,
+                            Instruction {
+                                op: OpCode::MemberSet {
+                                    target: dest,
+                                    field: field.clone(),
+                                    src,
+                                },
+                            },
+                        );
                     }
                 }
             }
@@ -542,6 +589,14 @@ impl CompilationUnit {
                     .declarations
                     .insert(function_declaration_stmt.name.clone(), dest);
             }
+            StmtKind::TypeDeclaration(type_declaration_stmt) => {
+                if let Type::NamedType(type_descriptor) = &type_declaration_stmt.ty {
+                    self.named_types
+                        .insert(type_declaration_stmt.name.clone(), type_descriptor.clone());
+                } else {
+                    panic!("Expected named type on type declaration!")
+                }
+            }
         }
     }
 
@@ -582,8 +637,8 @@ impl CompilationUnit {
 
                 // Free the element registers since they're now contained in the array
                 let prototype = &mut self.functions[prototype_id.0];
-                for reg in element_registers {
-                    prototype.register_allocator.free(reg);
+                for reg in &element_registers {
+                    prototype.register_allocator.free(&reg);
                 }
 
                 dest
@@ -632,7 +687,9 @@ impl CompilationUnit {
                             },
                         );
                     } else {
-                        self.functions[prototype_id.0].register_allocator.free(dest);
+                        self.functions[prototype_id.0]
+                            .register_allocator
+                            .free(&dest);
                         panic!("Non variable named {:?}", id);
                     }
                 }
@@ -738,10 +795,12 @@ impl CompilationUnit {
                 }
 
                 // free the previous registers
-                self.functions[prototype_id.0].register_allocator.free(left);
                 self.functions[prototype_id.0]
                     .register_allocator
-                    .free(right);
+                    .free(&left);
+                self.functions[prototype_id.0]
+                    .register_allocator
+                    .free(&right);
 
                 dest
             }
@@ -925,6 +984,59 @@ impl CompilationUnit {
                     prototype_id,
                     Instruction {
                         op: OpCode::GetArrayElement { dest, array, index },
+                    },
+                );
+
+                dest
+            }
+            ExprKind::Instance(instanciate_type_exp) => {
+                // compile all expressions
+                let fields = instanciate_type_exp
+                    .fields
+                    .iter()
+                    .map(|(name, initializer)| {
+                        (name.clone(), self.compile_expr(prototype_id, initializer))
+                    })
+                    .collect::<HashMap<String, RegisterId>>();
+
+                let dest = self.functions[prototype_id.0]
+                    .register_allocator
+                    .get_free()
+                    .expect("Ran out of registers!");
+
+                // free initializer registers
+                for (_, field) in &fields {
+                    self.functions[prototype_id.0]
+                        .register_allocator
+                        .free(field);
+                }
+
+                self.emit_instruction(
+                    prototype_id,
+                    Instruction {
+                        op: OpCode::CreateInstance { dest, fields },
+                    },
+                );
+
+                dest
+            }
+            ExprKind::MemberAccess(member_access_expr) => {
+                let target = self.compile_expr(prototype_id, &member_access_expr.target);
+
+                let dest = self.functions[prototype_id.0]
+                    .register_allocator
+                    .get_free()
+                    .expect("Ran out of registers!");
+
+                // get index of field name
+                self.emit_instruction(
+                    prototype_id,
+                    Instruction {
+                        op: OpCode::MemberAccess {
+                            target,
+                            dest,
+                            field: member_access_expr.name.clone(),
+                        },
                     },
                 );
 

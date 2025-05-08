@@ -1,13 +1,23 @@
+use std::collections::HashMap;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
     Float64,
     Boolean,
     String,
 
+    NamedType(TypeDescriptor),
     Function(FunctionType),
     // Tuple(Vec<Type>),
     Array(Box<Type>),
     Never, // For expressions that never return
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypeDescriptor {
+    pub name: String,
+    pub fields: HashMap<String, Type>,
+    pub fields_ordered: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,6 +60,7 @@ impl Type {
             }
             Type::Never => "()".into(),
             Type::Array(ty) => format!("[{:?}]", *ty),
+            Type::NamedType(type_descriptor) => todo!(),
         }
     }
 }

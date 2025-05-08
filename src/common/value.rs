@@ -1,5 +1,6 @@
 use std::{
     cell::RefCell,
+    collections::HashMap,
     fmt::Display,
     ops::{Add, Div, Mul, Neg, Not, Sub},
     rc::Rc,
@@ -41,6 +42,7 @@ pub enum Value {
 
     // Reference
     String(Rc<String>),
+    Instance(Rc<RefCell<HashMap<String, Value>>>),
     Array(Rc<RefCell<Vec<Value>>>),
     Function(usize), // index into Prototype::functions
     Closure(Rc<Closure>),
@@ -99,6 +101,7 @@ impl Display for Value {
                         .join(", ")
                 )
             }
+            Value::Instance(ref_cell) => todo!(),
         }
     }
 }

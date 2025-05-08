@@ -29,8 +29,10 @@
         this optimization would halven the runtime memory usage, since a value would go from 16 bytes (8 value + 1 tag + pad to 16)
         to only being 8 bytes (64 bits = value itself)
 - [ ] class/struct
-    - [ ] custom types
-    - [ ] member fields/methods
+    - [x] custom types
+    - [x] member fields
+    - [ ] methods
+    - [ ] recursive types (during type checking is problem)
 - [ ] track variable life times
     - [ ] for register reuse
 - [ ] copy objects

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::{fmt::Debug, vec};
 
 use crate::frontend::ast::*;
@@ -196,10 +197,50 @@ impl<'a> NewParser<'a> {
                 let token = token.clone();
                 match token.ty {
                     TokenType::Identifier => {
-                        consume!(self.untyped_expr(
-                            ExprKind::Identifier(token.lexeme.clone()),
-                            self.span_from(start)
-                        ))
+                        let identifier = token.lexeme.clone();
+                        self.advance(); // Consume identifier
+
+                        // Check if this is a struct instantiation
+                        if self.check(TokenType::LeftBrace) {
+                            self.advance(); // Consume {
+
+                            let mut fields = HashMap::new();
+
+                            if !self.check(TokenType::RightBrace) {
+                                loop {
+                                    let field_name =
+                                        self.expect(TokenType::Identifier)?.lexeme.clone();
+                                    self.expect(TokenType::Equal)?;
+                                    let value = self.expression()?;
+
+                                    fields.insert(field_name, value);
+
+                                    if self.check(TokenType::Comma) {
+                                        self.advance(); // Consume comma
+                                    }
+
+                                    if self.check(TokenType::RightBrace) {
+                                        break;
+                                    }
+                                }
+                            }
+
+                            self.expect(TokenType::RightBrace)?;
+
+                            Ok(self.untyped_expr(
+                                ExprKind::Instance(InstanciateTypeExp {
+                                    name: identifier,
+                                    fields,
+                                }),
+                                self.span_from(start),
+                            ))
+                        } else {
+                            // Regular identifier
+                            Ok(self.untyped_expr(
+                                ExprKind::Identifier(identifier),
+                                self.span_from(start),
+                            ))
+                        }
                     }
                     TokenType::Number => {
                         consume!(self.untyped_expr(
@@ -296,21 +337,38 @@ impl<'a> NewParser<'a> {
             )),
         }?;
 
-        // Array accesses
-        if self.check(TokenType::LeftBracket) {
-            self.advance();
+        loop {
+            // member access
+            if self.check(TokenType::Dot) {
+                self.advance();
+                let field_name = self.expect(TokenType::Identifier)?.lexeme.clone();
 
-            let index = self.expression()?;
+                expr = self.untyped_expr(
+                    ExprKind::MemberAccess(MemberAccessExpr {
+                        target: Box::new(expr),
+                        name: field_name,
+                        id: 0,
+                    }),
+                    self.span_from(start),
+                );
+            }
+            //
+            // array access
+            else if self.check(TokenType::LeftBracket) {
+                self.advance();
+                let index = self.expression()?;
+                self.expect(TokenType::RightBracket)?;
 
-            self.expect(TokenType::RightBracket)?;
-
-            expr = self.untyped_expr(
-                ExprKind::IndexAccess(ArrayIndexExpr {
-                    target: Box::new(expr),
-                    index: Box::new(index),
-                }),
-                self.span_from(start),
-            );
+                expr = self.untyped_expr(
+                    ExprKind::IndexAccess(ArrayIndexExpr {
+                        target: Box::new(expr),
+                        index: Box::new(index),
+                    }),
+                    self.span_from(start),
+                );
+            } else {
+                break;
+            }
         }
 
         Ok(expr)
@@ -794,6 +852,10 @@ impl<'a> NewParser<'a> {
                 object: index_access.target,
                 index: index_access.index,
             }),
+            ExprKind::MemberAccess(member_access) => Ok(Assignable::MemberAcess {
+                target: member_access.target,
+                field: member_access.name,
+            }),
             _ => Err(self.error(ErrorType::Expected, format!("Expected an assignable type!"))),
         }
     }
@@ -845,6 +907,44 @@ impl<'a> NewParser<'a> {
         ))
     }
 
+    fn type_declaration(&mut self) -> Result<Stmt, NewParserError> {
+        let start = self.current;
+
+        self.advance(); // type
+        let name = self.expect(TokenType::Identifier)?.lexeme.clone();
+
+        let mut fields = Vec::new();
+        self.expect(TokenType::LeftBrace)?;
+        {
+            if !self.check(TokenType::RightBrace) {
+                fields.push(self.parse_parameter()?); // reuse parse_parameter since they are both `name: type,`
+
+                while self.check(TokenType::Comma) {
+                    self.advance(); // ,
+                    fields.push(self.parse_parameter()?);
+                }
+            }
+        }
+        self.expect(TokenType::RightBrace)?;
+
+        Ok(self.stmt(
+            StmtKind::TypeDeclaration(Box::new(TypeDeclarationStmt {
+                name: name.clone(),
+                fields_ordered: fields
+                    .clone()
+                    .iter()
+                    .map(|(name, _, _)| name.clone())
+                    .collect(),
+                fields: fields
+                    .into_iter()
+                    .map(|(field, _, ty)| (field, ty))
+                    .collect(),
+                ty: Type::Never,
+            })),
+            self.span_from(start),
+        ))
+    }
+
     fn declaration(&mut self) -> Result<Stmt, NewParserError> {
         let start = self.current;
         if self.check(TokenType::Function) {
@@ -855,6 +955,8 @@ impl<'a> NewParser<'a> {
             self.return_statement()
         } else if self.check(TokenType::If) {
             self.if_statement()
+        } else if self.check(TokenType::Type) {
+            self.type_declaration()
         } else {
             if self.check(TokenType::Identifier) {
                 // look for an equal (=) until (;) for assignment

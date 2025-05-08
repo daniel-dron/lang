@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
 use crate::frontend::ast::{
-    Assignable, BinaryOp, Expr, ExprKind, Literal, Parameter, Span, Stmt, StmtKind, TypeAnnotation,
-    TypeExpr, UnaryOp,
+    Assignable, BinaryOp, Expr, ExprKind, Literal, Span, Stmt, StmtKind, TypeAnnotation, TypeExpr,
+    UnaryOp,
 };
 
-use super::types::{FunctionType, Type};
+use super::types::{FunctionType, Type, TypeDescriptor};
 
 #[derive(Debug, Clone)]
 pub struct TypeError {
@@ -32,12 +32,14 @@ pub enum TypeErrorKind {
 #[derive(Debug)]
 struct TypeScope {
     pub symbols: HashMap<String, Type>,
+    pub declared_types: HashMap<String, TypeDescriptor>,
 }
 
 impl TypeScope {
     pub fn new() -> Self {
         Self {
             symbols: HashMap::new(),
+            declared_types: HashMap::new(),
         }
     }
 
@@ -47,6 +49,10 @@ impl TypeScope {
         }
 
         None
+    }
+
+    fn lookup_type(&self, name: &String) -> Option<TypeDescriptor> {
+        return self.declared_types.get(name).cloned();
     }
 }
 
@@ -98,6 +104,22 @@ impl TypeChecker {
         scope.symbols.insert(name, ty);
     }
 
+    fn register_type(&mut self, name: String, ty: TypeDescriptor) {
+        let scope = self.scopes.last_mut().unwrap();
+        scope.declared_types.insert(name, ty);
+    }
+
+    fn look_up_type(&mut self, name: &String) -> Option<TypeDescriptor> {
+        // iterate in reverse, starting from scope with highest depth
+        for scope in self.scopes.iter().rev() {
+            if let Some(ty) = scope.lookup_type(&name) {
+                return Some(ty);
+            }
+        }
+
+        None
+    }
+
     pub fn apply_type(&mut self, type_annotation: &mut TypeAnnotation) -> Result<(), TypeError> {
         let ty = self.resolve_type_expr(&type_annotation.expr, &type_annotation.span)?;
         type_annotation.ty = ty;
@@ -116,10 +138,17 @@ impl TypeChecker {
                     "f64" => Ok(Type::Float64),
                     "str" => Ok(Type::String),
                     "bool" => Ok(Type::Boolean),
-                    _ => Err(TypeError {
-                        span: span.clone(),
-                        ty: TypeErrorKind::TODO(format!("Unknown type: {}", name)),
-                    }),
+                    _ => {
+                        // check if its a named type
+                        if let Some(ty) = self.look_up_type(name) {
+                            Ok(Type::NamedType(ty.clone()))
+                        } else {
+                            Err(TypeError {
+                                span: span.clone(),
+                                ty: TypeErrorKind::TODO(format!("Unknown type: {}", name)),
+                            })
+                        }
+                    }
                 }
             }
             TypeExpr::Function {
@@ -303,6 +332,30 @@ impl TypeChecker {
                             })
                         }
                     }?,
+                    Assignable::MemberAcess { target, field } => {
+                        let ty = self.infer_expression(target)?;
+                        if let Type::NamedType(ty) = &ty {
+                            // check if type has member name
+                            if ty.fields.contains_key(field) {
+                                let field_type = ty.fields.get(field).unwrap();
+
+                                field_type.clone()
+                            } else {
+                                return Err(TypeError {
+                                    span: target.span.clone(),
+                                    ty: TypeErrorKind::TODO(format!(
+                                        "{:?} is not a named type",
+                                        ty
+                                    )),
+                                });
+                            }
+                        } else {
+                            return Err(TypeError {
+                                span: target.span.clone(),
+                                ty: TypeErrorKind::TODO(format!("{:?} is not a named type", ty)),
+                            });
+                        }
+                    }
                 };
 
                 let right_ty = self.infer_expression(expr)?;
@@ -398,7 +451,6 @@ impl TypeChecker {
                 let ret_ty = self.infer_expression(&mut function_declaration_stmt.body)?;
 
                 if ret_ty != *expected_ty {
-                    println!("GOT: {:#?}", self);
                     return Err(TypeError {
                         span: statment.span.clone(),
                         ty: TypeErrorKind::TODO("Function Declaration Err 2".into()),
@@ -406,6 +458,29 @@ impl TypeChecker {
                 }
 
                 self.pop_scope();
+                Ok(None)
+            }
+            StmtKind::TypeDeclaration(type_declaration_stmt) => {
+                for (_, type_annotation) in &mut type_declaration_stmt.fields {
+                    self.apply_type(type_annotation)?;
+                }
+
+                let fields = type_declaration_stmt
+                    .fields
+                    .clone()
+                    .into_iter()
+                    .map(|(name, type_annotation)| (name, type_annotation.ty))
+                    .collect();
+
+                let ty = TypeDescriptor {
+                    name: type_declaration_stmt.name.clone(),
+                    fields,
+                    fields_ordered: type_declaration_stmt.fields_ordered.clone(),
+                };
+
+                type_declaration_stmt.ty = Type::NamedType(ty.clone());
+                self.register_type(type_declaration_stmt.name.clone(), ty);
+
                 Ok(None)
             }
         }
@@ -561,12 +636,15 @@ impl TypeChecker {
                 Ok(ret_types[0].clone())
             }
             ExprKind::Call(call_expr) => match self.infer_expression(&mut call_expr.callee)? {
-                Type::Float64 | Type::Boolean | Type::String | Type::Array(_) | Type::Never => {
-                    Err(TypeError {
-                        span: expression.span.clone(),
-                        ty: TypeErrorKind::TODO("Invalid Call Err".into()),
-                    })
-                }
+                Type::Float64
+                | Type::Boolean
+                | Type::String
+                | Type::Array(_)
+                | Type::Never
+                | Type::NamedType(_) => Err(TypeError {
+                    span: expression.span.clone(),
+                    ty: TypeErrorKind::TODO("Invalid Call Err".into()),
+                }),
                 Type::Function(function_type) => {
                     // LITTLE HACK FOR NOW since we dont support variadic parameter count
                     if let ExprKind::Identifier(name) = &call_expr.callee.kind {
@@ -639,6 +717,89 @@ impl TypeChecker {
                         }
                     }
                     _ => todo!(),
+                }
+            }
+            ExprKind::Instance(instanciate_type_exp) => {
+                // get instance type
+                if let Some(ty) = self.look_up_type(&instanciate_type_exp.name) {
+                    // make sure types match
+                    let required_fields = &ty.fields;
+
+                    for (field_name, _) in required_fields {
+                        if !instanciate_type_exp.fields.contains_key(field_name) {
+                            return Err(TypeError {
+                                span: expression.span.clone(),
+                                ty: TypeErrorKind::TODO(format!(
+                                    "Missing field '{}' for type '{}'",
+                                    field_name, instanciate_type_exp.name
+                                )),
+                            });
+                        }
+                    }
+
+                    for field_name in instanciate_type_exp.fields.keys() {
+                        if !required_fields.contains_key(field_name) {
+                            return Err(TypeError {
+                                span: expression.span.clone(),
+                                ty: TypeErrorKind::TODO(format!(
+                                    "Unknown field '{}' for type '{}'",
+                                    field_name, instanciate_type_exp.name
+                                )),
+                            });
+                        }
+                    }
+
+                    for (field_name, field_expr) in &mut instanciate_type_exp.fields {
+                        let expected_type = required_fields.get(field_name).unwrap();
+                        let actual_type = self.infer_expression(field_expr)?;
+
+                        if &actual_type != expected_type {
+                            return Err(TypeError {
+                                span: field_expr.span.clone(),
+                                ty: TypeErrorKind::MissmatchedTypes {
+                                    expected: Expected::Named(expected_type.to_string()),
+                                    got_ty: actual_type,
+                                    got_span: field_expr.span.clone(),
+                                },
+                            });
+                        }
+                    }
+
+                    expression.ty = Type::NamedType(ty.clone());
+
+                    Ok(expression.ty.clone())
+                } else {
+                    Ok(Type::Never)
+                }
+            }
+            ExprKind::MemberAccess(member_access_expr) => {
+                let ty = self.infer_expression(&mut member_access_expr.target)?;
+                if let Type::NamedType(ty) = &ty {
+                    // check if type has member name
+                    if ty.fields.contains_key(&member_access_expr.name) {
+                        let field_type = ty.fields.get(&member_access_expr.name).unwrap();
+
+                        // get id
+                        let id = ty
+                            .fields_ordered
+                            .iter()
+                            .position(|item| *item == member_access_expr.name)
+                            .unwrap();
+
+                        member_access_expr.id = id;
+
+                        Ok(field_type.clone())
+                    } else {
+                        return Err(TypeError {
+                            span: expression.span.clone(),
+                            ty: TypeErrorKind::TODO(format!("{:?} is not a named type", ty)),
+                        });
+                    }
+                } else {
+                    return Err(TypeError {
+                        span: expression.span.clone(),
+                        ty: TypeErrorKind::TODO(format!("{:?} is not a named type", ty)),
+                    });
                 }
             }
         };

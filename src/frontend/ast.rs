@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::types::Type;
 
 #[derive(Debug)]
@@ -94,6 +96,8 @@ pub enum ExprKind {
     Block(BlockExpr),
     Call(CallExpr),
     Closure(ClosureExpr),
+    Instance(InstanciateTypeExp),
+    MemberAccess(MemberAccessExpr),
 }
 
 #[derive(Debug, Clone)]
@@ -133,6 +137,19 @@ pub struct ClosureExpr {
     pub parameters: Vec<Parameter>,
     pub body: Box<Expr>,
     pub return_type: TypeAnnotation,
+}
+
+#[derive(Debug, Clone)]
+pub struct InstanciateTypeExp {
+    pub name: String,
+    pub fields: HashMap<String, Expr>,
+}
+
+#[derive(Debug, Clone)]
+pub struct MemberAccessExpr {
+    pub target: Box<Expr>,
+    pub name: String,
+    pub id: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -177,6 +194,10 @@ pub enum Assignable {
         object: Box<Expr>,
         index: Box<Expr>,
     },
+    MemberAcess {
+        target: Box<Expr>,
+        field: String,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -187,6 +208,7 @@ pub enum StmtKind {
     If(IfStmt),
     Return(Option<Expr>),
     FunctionDeclaration(FunctionDeclarationStmt),
+    TypeDeclaration(Box<TypeDeclarationStmt>),
 }
 
 #[derive(Debug, Clone)]
@@ -228,4 +250,12 @@ pub struct FunctionDeclarationStmt {
     pub return_ty: TypeAnnotation,
     pub parameters: Vec<Parameter>,
     pub body: Box<Expr>, // usually ExprKind::Block
+}
+
+#[derive(Debug, Clone)]
+pub struct TypeDeclarationStmt {
+    pub name: String,
+    pub fields: HashMap<String, TypeAnnotation>,
+    pub fields_ordered: Vec<String>,
+    pub ty: Type,
 }
