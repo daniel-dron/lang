@@ -314,8 +314,8 @@ impl CompilationUnit {
                     .register_allocator
                     .get_free()
                     .expect("Ran out of registers");
-                prototype.declarations.insert(param.name.clone(), reg);
-                (param.name.clone(), reg)
+                prototype.declarations.insert(param.name.name.clone(), reg);
+                (param.name.name.clone(), reg)
             })
             .collect::<Vec<(String, RegisterId)>>();
         prototype.parameters = parameters;
@@ -426,13 +426,15 @@ impl CompilationUnit {
                     .declarations
                     .insert(declaration_stmt.name.clone(), dest);
             }
-            StmtKind::Assignment(target, initializer) => {
-                let src = self.compile_expr(prototype_id, initializer);
+            StmtKind::Assignment(assignment) => {
+                let AssignmentStmt { target, value } = &**assignment;
+
+                let src = self.compile_expr(prototype_id, value);
 
                 match target {
                     Assignable::Identifier(target) => {
                         let prototype = &self.functions[prototype_id.0];
-                        match prototype.declarations.get(target) {
+                        match prototype.declarations.get(&target.name) {
                             Some(id) => {
                                 self.emit_instruction(
                                     prototype_id,
@@ -442,7 +444,9 @@ impl CompilationUnit {
                                 );
                             }
                             None => {
-                                if let Some(upvalue) = self.needs_capture(prototype_id, target) {
+                                if let Some(upvalue) =
+                                    self.needs_capture(prototype_id, &target.name)
+                                {
                                     self.emit_instruction(
                                         prototype_id,
                                         Instruction {
@@ -456,18 +460,18 @@ impl CompilationUnit {
                                             },
                                         },
                                     );
-                                } else if self.globals.contains_key(target) {
+                                } else if self.globals.contains_key(&target.name) {
                                     self.emit_instruction(
                                         prototype_id,
                                         Instruction {
                                             op: OpCode::StoreGlobal {
-                                                dest: target.clone(),
+                                                dest: target.name.clone(),
                                                 src,
                                             },
                                         },
                                     );
                                 } else {
-                                    panic!("Variable '{}' not declared!", target);
+                                    panic!("Variable '{}' not declared!", target.name);
                                 }
                             }
                         }
@@ -502,7 +506,7 @@ impl CompilationUnit {
                             Instruction {
                                 op: OpCode::MemberSet {
                                     target: dest,
-                                    field: field.clone(),
+                                    field: field.name.clone(),
                                     src,
                                 },
                             },
@@ -649,17 +653,20 @@ impl CompilationUnit {
                     .get_free()
                     .expect("Ran out of registers");
 
-                if self.functions[prototype_id.0].declarations.contains_key(id) {
+                if self.functions[prototype_id.0]
+                    .declarations
+                    .contains_key(&id.name)
+                {
                     self.emit_instruction(
                         prototype_id,
                         Instruction {
                             op: OpCode::Move {
                                 dest,
-                                src: self.functions[prototype_id.0].declarations[id],
+                                src: self.functions[prototype_id.0].declarations[&id.name],
                             },
                         },
                     );
-                } else if let Some(upvalue) = self.needs_capture(prototype_id, id) {
+                } else if let Some(upvalue) = self.needs_capture(prototype_id, &id.name) {
                     if !self.functions[prototype_id.0].upvalues.contains(&upvalue) {
                         self.functions[prototype_id.0].upvalues.push(upvalue);
                     }
@@ -676,13 +683,13 @@ impl CompilationUnit {
                     );
                 } else {
                     // check if its a global
-                    if let Some(_) = self.globals.get(id) {
+                    if let Some(_) = self.globals.get(&id.name) {
                         self.emit_instruction(
                             prototype_id,
                             Instruction {
                                 op: OpCode::LoadGlobal {
                                     dest,
-                                    src: id.clone(),
+                                    src: id.name.clone(),
                                 },
                             },
                         );
@@ -871,12 +878,12 @@ impl CompilationUnit {
 
                 let target_call = if let ExprKind::Identifier(name) = &call_expr.callee.kind {
                     // named symbolic call
-                    if let Some(id) = self.functions_map.get(name) {
+                    if let Some(id) = self.functions_map.get(&name.name) {
                         if self.functions[*id].parameters.len() != call_expr.arguments.len() {
-                            panic!("Unmatched parameters count on call to `{}`", name);
+                            panic!("Unmatched parameters count on call to `{}`", name.name);
                         }
                         CallId::Index(*id)
-                    } else if self.globals.contains_key(name) {
+                    } else if self.globals.contains_key(&name.name) {
                         // this global MIGHT be a function, we need to check it at runtime, cant do more here...
                         let global_reg = self.functions[prototype_id.0]
                             .register_allocator
@@ -888,7 +895,7 @@ impl CompilationUnit {
                             Instruction {
                                 op: OpCode::LoadGlobal {
                                     dest: global_reg,
-                                    src: name.clone(),
+                                    src: name.name.clone(),
                                 },
                             },
                         );
@@ -896,13 +903,13 @@ impl CompilationUnit {
                         CallId::Register(global_reg)
                     } else if self.functions[prototype_id.0]
                         .declarations
-                        .contains_key(name)
+                        .contains_key(&name.name)
                     {
                         // parameter
                         CallId::Register(
                             self.functions[prototype_id.0]
                                 .declarations
-                                .get(name)
+                                .get(&name.name)
                                 .unwrap()
                                 .clone(),
                         )
@@ -912,7 +919,7 @@ impl CompilationUnit {
                             prototype_id,
                             Instruction {
                                 op: OpCode::CallNative {
-                                    id: name.clone(),
+                                    id: name.name.clone(),
                                     ret,
                                     params: args.clone(),
                                 },

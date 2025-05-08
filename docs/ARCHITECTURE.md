@@ -47,13 +47,7 @@ this is done after the variable name using `: type` or after the function parame
         age: f64
     }
 
-    binds Person {
-        fn description(ref self) -> str {
-            return self.name " is " + self.age + " years old";
-        }
-    }
-
-    let person: Person = Person { name: "Michael", age: 23 };
+    let person = Person { name: "Michael", age: 23 };
     print(person.description);
 ```
 
@@ -97,24 +91,6 @@ these are also the default behaviour when passing stuff as parameters
     append_double(vec, 4);
 
     // vec == [1, 2, 3, 8]
-```
-
-you can also choose which method to use to assign or pass parameters
-```rust
-    fn double(val: ref f64) {
-        val = val*2;
-    }
-
-    let x = 10;
-    double(ref x); // x == 20 now
-
-    fn do_stuff(vec: [f64], f64) -> [f64] {
-        vec.append(f64);
-    }
-
-    let vec = [1, 2, 3, 4];
-    let new_vec = do_stuff(copy vec, 5); // new_vec == [1, 2, 3, 4, 5]
-                                         // vec     == [1, 2, 3, 4] 
 ```
 
 ## functions
@@ -193,66 +169,3 @@ you can iterate directly on iterable objects like arrays and strings
         print(i); // 0 1 2 3 ... 100
     }
 ```
-
-## closures
-
-## errors and optionals
-
-errors are sumtype of success and error. they can be matched on and passed through the callstack
-error values are of type `err<v, e>` where v is the type in case of success and e in case of error
-
-```rust
-
-    let result: err<f64, str> = ok(10);
-    let failure: err<f64, str> = fail("job failed boss O7");
-```
-
-errors can be matched on
-```rust
-    match result {
-        ok(value) => print("Success " + value + "!"),
-        fail(error) => print("Failed... " + error)
-    };
-
-    if let value)
-```
-
-they can be propagated up the call stack **IF** they have the same fail type with a question mark after the expression `?`
-``` rust
-
-    fn bar() -> err<f64, str> {
-        return fail("we can never succeed...");
-    }
-
-    fn foo() -> err<str, str> {
-        let value = bar()?; // the question mark `?` indicates that if bar returns a fail, return that same fail from foo
-        return "we got this value: " + value; 
-    }
-```
-
-optionals are a type that represent the possible absense of value. work similarly to rust
-their type are of `opt<v>` where v is the possible value type
-they can either be `some(value)` or just `none` in its absense
-``` rust
-    fn get_prime_between(lower: f64, higher: f64) -> opt<f64> {
-        // ...
-        return none;
-    }
-
-    fn foo() {
-        if let some(value) = get_prime_between(54, 58) {
-            print("somehow we got a prime! " + value);
-        } else {
-            print("yhea there is no prime...");
-        }
-
-        // or similarly
-        if let none get_prime_between(54, 58) {
-            print("yhea there was no prime as expected...");
-        }
-    }
-```
-
-## native functions
-
-## std

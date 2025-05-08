@@ -1,8 +1,11 @@
-use std::collections::HashMap;
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use crate::frontend::ast::{
-    Assignable, BinaryOp, Expr, ExprKind, Literal, Span, Stmt, StmtKind, TypeAnnotation, TypeExpr,
-    UnaryOp,
+use crate::frontend::{
+    ast::{
+        Assignable, AssignmentStmt, BinaryOp, Expr, ExprKind, Literal, Span, Stmt, StmtKind,
+        TypeAnnotation, TypeExpr, UnaryOp,
+    },
+    resolve::{NameResolver, Scope, ScopeId, SymbolId},
 };
 
 use super::types::{FunctionType, Type, TypeDescriptor};
@@ -29,95 +32,113 @@ pub enum TypeErrorKind {
     TODO(String),
 }
 
-#[derive(Debug)]
-struct TypeScope {
-    pub symbols: HashMap<String, Type>,
-    pub declared_types: HashMap<String, TypeDescriptor>,
-}
-
-impl TypeScope {
-    pub fn new() -> Self {
-        Self {
-            symbols: HashMap::new(),
-            declared_types: HashMap::new(),
-        }
-    }
-
-    fn lookup_symbol(&self, name: &String) -> Option<Type> {
-        if let Some(ty) = self.symbols.get(name) {
-            return Some(ty.clone());
-        }
-
-        None
-    }
-
-    fn lookup_type(&self, name: &String) -> Option<TypeDescriptor> {
-        return self.declared_types.get(name).cloned();
-    }
-}
-
 /// The type checker not only enforces type correctness but also infers types
 #[derive(Debug)]
-pub struct TypeChecker {
-    // For expressions (based on NodeId)
-    // expr_types: HashMap<NodeId, Type>,
-    scopes: Vec<TypeScope>,
-
+pub struct TypeChecker<'nr> {
+    types: HashMap<SymbolId, Type>,
+    name_solver: &'nr mut NameResolver,
+    current_scope: Option<Rc<RefCell<Scope>>>,
     errors: Vec<TypeError>,
 }
 
-impl TypeChecker {
-    pub fn new() -> Self {
-        Self {
-            scopes: vec![TypeScope::new()],
+impl<'nr> TypeChecker<'nr> {
+    pub fn new(name_solver: &'nr mut NameResolver) -> TypeChecker<'nr> {
+        let mut tc = Self {
+            types: HashMap::new(),
+            name_solver,
             errors: vec![],
-        }
+            current_scope: None,
+        };
+
+        // set global scope
+        tc.current_scope = Some(tc.name_solver.scope());
+
+        tc
     }
 
     pub fn register_native(&mut self, name: String, ty: FunctionType) {
-        // native functions are registered on global level
-        self.scopes[0].symbols.insert(name, Type::Function(ty));
+        println!("[TYPE] Looking for: {}", name);
+        let symbol_id = self
+            .current_scope
+            .as_ref()
+            .unwrap()
+            .borrow_mut()
+            .lookup_symbol(&name)
+            .unwrap();
+        self.types.insert(symbol_id, Type::Function(ty));
     }
 
-    fn push_scope(&mut self) {
-        self.scopes.push(TypeScope::new());
+    fn push_scope(&mut self, scope_id: &ScopeId) {
+        println!("[TYPE] Entering scope: {:?}", scope_id);
+        self.current_scope = self.name_solver.scopes.get(scope_id).cloned();
     }
 
     fn pop_scope(&mut self) {
-        self.scopes.pop();
+        println!(
+            "[TYPE] Leaving scope: {:?}",
+            self.current_scope.as_ref().unwrap().borrow().id
+        );
+        let parent = self.current_scope.as_ref().unwrap().borrow().parent.clone();
+        self.current_scope = parent;
     }
 
     fn lookup_symbol(&self, name: String) -> Option<Type> {
-        // iterate in reverse, starting from scope with highest depth
-        for scope in self.scopes.iter().rev() {
-            if let Some(ty) = scope.lookup_symbol(&name) {
-                return Some(ty);
-            }
-        }
+        println!("[TYPE] Looking for symbol: {}", name);
+        let symbol_id = self
+            .current_scope
+            .as_ref()
+            .unwrap()
+            .borrow_mut()
+            .lookup_symbol(&name)
+            .unwrap();
+        println!("  [TYPE] got: {:?}", symbol_id);
 
-        None
+        self.types.get(&symbol_id).cloned()
     }
 
-    // register a symbol on the current scope
     fn register_symbol(&mut self, name: String, ty: Type) {
-        let scope = self.scopes.last_mut().unwrap();
-        scope.symbols.insert(name, ty);
+        println!("[TYPE] Looking for symbol: {}", name);
+        let symbol_id = self
+            .current_scope
+            .as_ref()
+            .unwrap()
+            .borrow_mut()
+            .lookup_symbol(&name)
+            .unwrap();
+        println!("  [TYPE] got: {:?}", symbol_id);
+
+        self.types.insert(symbol_id, ty);
     }
 
     fn register_type(&mut self, name: String, ty: TypeDescriptor) {
-        let scope = self.scopes.last_mut().unwrap();
-        scope.declared_types.insert(name, ty);
+        let symbol_id = self
+            .current_scope
+            .as_ref()
+            .unwrap()
+            .borrow_mut()
+            .lookup_symbol(&name)
+            .unwrap();
+        self.types.insert(symbol_id, Type::NamedType(ty));
     }
 
     fn look_up_type(&mut self, name: &String) -> Option<TypeDescriptor> {
-        // iterate in reverse, starting from scope with highest depth
-        for scope in self.scopes.iter().rev() {
-            if let Some(ty) = scope.lookup_type(&name) {
-                return Some(ty);
-            }
-        }
+        let symbol_id = self
+            .current_scope
+            .as_ref()
+            .unwrap()
+            .borrow_mut()
+            .lookup_symbol(&name)
+            .unwrap();
 
-        None
+        if let Some(ty) = self.types.get(&symbol_id) {
+            if let Type::NamedType(type_descriptor) = ty {
+                Some(type_descriptor.clone())
+            } else {
+                None
+            }
+        } else {
+            None
+        }
     }
 
     pub fn apply_type(&mut self, type_annotation: &mut TypeAnnotation) -> Result<(), TypeError> {
@@ -294,10 +315,14 @@ impl TypeChecker {
 
                 Ok(None)
             }
-            StmtKind::Assignment(target, expr) => {
+            StmtKind::Assignment(assignment) => {
+                let AssignmentStmt { target, value } = &mut **assignment;
+                println!("Assignment: {:#?} {:#?}", target, value);
+
                 // infer the type of the target
                 let ty = match target {
-                    Assignable::Identifier(target) => match self.lookup_symbol(target.clone()) {
+                    Assignable::Identifier(target) => match self.lookup_symbol(target.name.clone())
+                    {
                         Some(ty) => Ok(ty.clone()),
                         None => Err(TypeError {
                             span: statment.span.clone(),
@@ -317,7 +342,7 @@ impl TypeChecker {
                                     ty: TypeErrorKind::MissmatchedTypes {
                                         expected: Expected::Named(Type::Float64.to_string()),
                                         got_ty: right,
-                                        got_span: expr.span.clone(),
+                                        got_span: value.span.clone(),
                                     },
                                 })
                             }
@@ -327,7 +352,7 @@ impl TypeChecker {
                                 ty: TypeErrorKind::MissmatchedTypes {
                                     expected: Expected::Named(left.to_string().into()),
                                     got_ty: right,
-                                    got_span: expr.span.clone(),
+                                    got_span: value.span.clone(),
                                 },
                             })
                         }
@@ -336,8 +361,8 @@ impl TypeChecker {
                         let ty = self.infer_expression(target)?;
                         if let Type::NamedType(ty) = &ty {
                             // check if type has member name
-                            if ty.fields.contains_key(field) {
-                                let field_type = ty.fields.get(field).unwrap();
+                            if ty.fields.contains_key(&field.name) {
+                                let field_type = ty.fields.get(&field.name).unwrap();
 
                                 field_type.clone()
                             } else {
@@ -358,7 +383,7 @@ impl TypeChecker {
                     }
                 };
 
-                let right_ty = self.infer_expression(expr)?;
+                let right_ty = self.infer_expression(value)?;
 
                 // the right side will never return anything, we can´t assign this value
                 if right_ty == Type::Never {
@@ -367,18 +392,18 @@ impl TypeChecker {
                         ty: TypeErrorKind::MissmatchedTypes {
                             expected: Expected::Named("Any".into()),
                             got_ty: right_ty,
-                            got_span: expr.span.clone(),
+                            got_span: value.span.clone(),
                         },
                     });
                 }
 
                 if ty != right_ty {
                     return Err(TypeError {
-                        span: expr.span.clone(),
+                        span: value.span.clone(),
                         ty: TypeErrorKind::MissmatchedTypes {
                             expected: Expected::Named(ty.to_string().into()),
                             got_ty: right_ty,
-                            got_span: expr.span.clone(),
+                            got_span: value.span.clone(),
                         },
                     });
                 }
@@ -440,24 +465,33 @@ impl TypeChecker {
                     }),
                 );
 
-                self.push_scope();
+                println!("STMT: {:#?}", function_declaration_stmt);
 
-                // register param types first
-                for (param, ty) in function_declaration_stmt.parameters.iter().zip(&parameters) {
-                    self.register_symbol(param.name.clone(), ty.clone());
+                if let ExprKind::Block(block) = &function_declaration_stmt.body.kind {
+                    // temporarely enter the block scope
+                    println!(
+                        "[TYPE] func (PARAMS SCOPE): {:#?}",
+                        function_declaration_stmt.name
+                    );
+                    self.push_scope(&block.scope_id);
+                    // register param types first
+                    for (param, ty) in function_declaration_stmt.parameters.iter().zip(&parameters)
+                    {
+                        self.register_symbol(param.name.name.clone(), ty.clone());
+                    }
+                    self.pop_scope();
+
+                    // parse the body
+                    let ret_ty = self.infer_expression(&mut function_declaration_stmt.body)?;
+
+                    if ret_ty != *expected_ty {
+                        return Err(TypeError {
+                            span: statment.span.clone(),
+                            ty: TypeErrorKind::TODO("Function Declaration Err 2".into()),
+                        });
+                    }
                 }
 
-                // parse the body
-                let ret_ty = self.infer_expression(&mut function_declaration_stmt.body)?;
-
-                if ret_ty != *expected_ty {
-                    return Err(TypeError {
-                        span: statment.span.clone(),
-                        ty: TypeErrorKind::TODO("Function Declaration Err 2".into()),
-                    });
-                }
-
-                self.pop_scope();
                 Ok(None)
             }
             StmtKind::TypeDeclaration(type_declaration_stmt) => {
@@ -516,7 +550,7 @@ impl TypeChecker {
                     }
                 }
             },
-            ExprKind::Identifier(identifier) => match self.lookup_symbol(identifier.clone()) {
+            ExprKind::Identifier(identifier) => match self.lookup_symbol(identifier.name.clone()) {
                 Some(ty) => Ok(ty),
                 None => Err(TypeError {
                     span: expression.span.clone(),
@@ -600,7 +634,7 @@ impl TypeChecker {
                 }
             }
             ExprKind::Block(block_expr) => {
-                self.push_scope();
+                self.push_scope(&block_expr.scope_id);
 
                 let mut ret_types = vec![];
 
@@ -617,6 +651,7 @@ impl TypeChecker {
 
                 // check if all return types are the same
                 if ret_types.is_empty() {
+                    self.pop_scope();
                     return Ok(Type::Never);
                 }
 
@@ -626,6 +661,7 @@ impl TypeChecker {
                 };
 
                 if !all_equal {
+                    self.pop_scope();
                     return Err(TypeError {
                         span: expression.span.clone(),
                         ty: TypeErrorKind::TODO("Block Type Err".into()),
@@ -648,7 +684,7 @@ impl TypeChecker {
                 Type::Function(function_type) => {
                     // LITTLE HACK FOR NOW since we dont support variadic parameter count
                     if let ExprKind::Identifier(name) = &call_expr.callee.kind {
-                        if name == "print" {
+                        if name.name == "print" {
                             expression.ty = *function_type.ret_ty.clone();
                             return Ok(*function_type.ret_ty.clone());
                         }
@@ -695,7 +731,7 @@ impl TypeChecker {
 
                 // register param types first
                 for (param, ty) in closure_expr.parameters.iter().zip(&parameters) {
-                    self.register_symbol(param.name.clone(), ty.clone());
+                    self.register_symbol(param.name.name.clone(), ty.clone());
                 }
 
                 Ok(Type::Function(FunctionType {

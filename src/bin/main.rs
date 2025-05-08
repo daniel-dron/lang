@@ -1,11 +1,14 @@
+use core::error;
 use std::{
-    env, fs, process, time::{SystemTime, UNIX_EPOCH}
+    env, fs, process,
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use lang_core::{
     CompilationUnit, ExecutionContext, Lexer, NewParser, Scanner, TypeChecker, Value,
     VirtualMachine,
     error_reporter::report,
+    frontend::{mut_visitor::MutVisitor, resolve::NameResolver},
     types::{FunctionType, Type},
 };
 
@@ -93,8 +96,16 @@ fn main() {
     println!("{}", source);
 
     match ast {
-        Ok(v) => {
-            let mut type_checker = TypeChecker::new();
+        Ok(mut v) => {
+            let mut name_resolver = NameResolver::new();
+            name_resolver.register_function("print");
+            name_resolver.register_function("assert");
+            if let Err(errors) = name_resolver.solve(v.as_mut_slice()) {
+                println!("Failed name resolution: {:#?}", errors);
+            }
+            // println!("NEW AST: {:#?}", v);
+
+            let mut type_checker = TypeChecker::new(&mut name_resolver);
             type_checker.register_native(
                 "print".into(),
                 FunctionType {

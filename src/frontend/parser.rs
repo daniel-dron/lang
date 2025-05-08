@@ -5,6 +5,8 @@ use crate::frontend::ast::*;
 use crate::frontend::lexer::*;
 use crate::types::Type;
 
+use super::resolve::ScopeId;
+
 #[derive(Debug)]
 pub struct NewParser<'a> {
     tokens: &'a [Token],
@@ -237,7 +239,11 @@ impl<'a> NewParser<'a> {
                         } else {
                             // Regular identifier
                             Ok(self.untyped_expr(
-                                ExprKind::Identifier(identifier),
+                                ExprKind::Identifier(Identifier {
+                                    name: identifier,
+                                    resolved: None,
+                                    span: token.span,
+                                }),
                                 self.span_from(start),
                             ))
                         }
@@ -591,7 +597,11 @@ impl<'a> NewParser<'a> {
                 .iter()
                 .map(|(name, span, ty)| Parameter {
                     id: self.id_gen.next(),
-                    name: name.clone(),
+                    name: Identifier {
+                        name: name.clone(),
+                        resolved: None,
+                        span: span.clone(),
+                    },
                     type_annotation: ty.clone(),
                     span: span.clone(),
                 })
@@ -706,7 +716,7 @@ impl<'a> NewParser<'a> {
             ExprKind::Block(BlockExpr {
                 statements,
                 result: None,
-                scope_id: 0,
+                scope_id: ScopeId(0),
             }),
             self.span_from(start),
         ))
@@ -825,7 +835,11 @@ impl<'a> NewParser<'a> {
             .iter()
             .map(|(name, span, ty)| Parameter {
                 id: self.id_gen.next(),
-                name: name.clone(),
+                name: Identifier {
+                    name: name.clone(),
+                    resolved: None,
+                    span: span.clone(),
+                },
                 type_annotation: ty.clone(),
                 span: span.clone(),
             })
@@ -854,7 +868,11 @@ impl<'a> NewParser<'a> {
             }),
             ExprKind::MemberAccess(member_access) => Ok(Assignable::MemberAcess {
                 target: member_access.target,
-                field: member_access.name,
+                field: Identifier {
+                    name: member_access.name,
+                    resolved: None,
+                    span: expr.span.clone(),
+                },
             }),
             _ => Err(self.error(ErrorType::Expected, format!("Expected an assignable type!"))),
         }
@@ -869,7 +887,13 @@ impl<'a> NewParser<'a> {
         self.expect(TokenType::Semicolon)?;
 
         let span = self.span_from(start);
-        Ok(self.stmt(StmtKind::Assignment(identifier, Box::new(assignment)), span))
+        Ok(self.stmt(
+            StmtKind::Assignment(Box::new(AssignmentStmt {
+                target: identifier,
+                value: assignment,
+            })),
+            span,
+        ))
     }
 
     fn if_statement(&mut self) -> Result<Stmt, NewParserError> {

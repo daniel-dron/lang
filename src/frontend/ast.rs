@@ -2,6 +2,8 @@ use std::collections::HashMap;
 
 use crate::types::Type;
 
+use super::resolve::{ScopeId, SymbolId};
+
 #[derive(Debug)]
 pub struct NodeIdGenerator {
     next_id: usize,
@@ -48,7 +50,7 @@ pub struct TypeAnnotation {
 #[derive(Debug, Clone)]
 pub struct Parameter {
     pub id: NodeId,
-    pub name: String,
+    pub name: Identifier,
     pub type_annotation: TypeAnnotation,
     pub span: Span, // this span is actually into tokens
 }
@@ -59,6 +61,13 @@ pub enum Literal {
     String(String),
     Boolean(bool),
     Array(Vec<Expr>),
+}
+
+#[derive(Debug, Clone)]
+pub struct Identifier {
+    pub name: String,
+    pub resolved: Option<SymbolId>,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -89,7 +98,7 @@ pub enum UnaryOp {
 #[derive(Debug, Clone)]
 pub enum ExprKind {
     Literal(Literal),
-    Identifier(String),
+    Identifier(Identifier),
     IndexAccess(ArrayIndexExpr),
     Binary(BinaryExpr),
     Unary(UnaryExpr),
@@ -123,7 +132,7 @@ pub struct UnaryExpr {
 pub struct BlockExpr {
     pub statements: Vec<Stmt>,
     pub result: Option<Box<Expr>>,
-    pub scope_id: usize,
+    pub scope_id: ScopeId,
 }
 
 #[derive(Debug, Clone)]
@@ -188,7 +197,7 @@ impl Expr {
 
 #[derive(Debug, Clone)]
 pub enum Assignable {
-    Identifier(String), // Regular variable assignment: x = ...
+    Identifier(Identifier), // Regular variable assignment: x = ...
     IndexAccess {
         // Array element assignment: arr[0] = ...
         object: Box<Expr>,
@@ -196,7 +205,7 @@ pub enum Assignable {
     },
     MemberAcess {
         target: Box<Expr>,
-        field: String,
+        field: Identifier,
     },
 }
 
@@ -204,7 +213,7 @@ pub enum Assignable {
 pub enum StmtKind {
     Expr(Box<Expr>),
     Let(LetStmt),
-    Assignment(Assignable, Box<Expr>),
+    Assignment(Box<AssignmentStmt>),
     If(IfStmt),
     Return(Option<Expr>),
     FunctionDeclaration(FunctionDeclarationStmt),
@@ -242,6 +251,12 @@ pub struct IfStmt {
     pub condition: Box<Expr>,
     pub then_block: Box<Stmt>,
     pub else_block: Option<Box<Stmt>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AssignmentStmt {
+    pub target: Assignable,
+    pub value: Expr,
 }
 
 #[derive(Debug, Clone)]
